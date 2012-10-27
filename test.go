@@ -9,7 +9,7 @@ import (
 var passed = 0
 
 func testHtml() {
-	passingTests := []int{0, 1, 2}
+	passingTests := []int{0, 1, 2, 3}
 	for _, i := range passingTests {
 		s := textiler.HtmlTests[i*2]
 		expected := []byte(textiler.HtmlTests[i*2+1])

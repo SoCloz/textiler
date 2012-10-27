@@ -93,23 +93,57 @@ func isHtmlParagraph(lines [][]byte) bool {
 	return bytes.Equal(tag, tag2)
 }
 
-func serTag(before []byte, inside []byte, rest []byte, tag string, out *bytes.Buffer) {
-	out.Write(before)
-
+func serTagStartWithOptClass(tag string, class []byte, out *bytes.Buffer) {
 	out.WriteByte('<')
 	out.WriteString(tag)
-	out.WriteByte('>')
+	if class == nil {
+		out.WriteByte('>')
+	} else {
+		out.WriteString(fmt.Sprintf(` class="%s">`, string(class)))
+	}
+}
 
-	serLine(inside, out)
+func serTagStartWithOptStyle(tag string, style []byte, out *bytes.Buffer) {
+	out.WriteByte('<')
+	out.WriteString(tag)
+	if style == nil {
+		out.WriteByte('>')
+	} else {
+		out.WriteString(fmt.Sprintf(` style="%s;">`, string(style)))
+	}
+}
 
+func serTagEnd(tag string, out *bytes.Buffer) {
 	out.WriteString("</")
 	out.WriteString(tag)
 	out.WriteByte('>')
+}
 
+func serTag(before []byte, inside []byte, rest []byte, tag string, out *bytes.Buffer) {
+	out.Write(before) // TODO: escaped?
+	serTagStartWithOptClass(tag, nil, out)
+	serLine(inside, out)
+	serTagEnd(tag, out)
 	serLine(rest, out)
 }
 
-func serSpan(before []byte, style []byte, inside []byte, rest []byte, out *bytes.Buffer) {
+func serTagWithClass(before []byte, inside []byte, class []byte, rest []byte, tag string, out *bytes.Buffer) {
+	out.Write(before) // TODO: escaped?
+	serTagStartWithOptClass(tag, class, out)
+	serLine(inside, out)
+	serTagEnd(tag, out)
+	serLine(rest, out)
+}
+
+func serTagWithStyle(before []byte, inside []byte, style []byte, rest []byte, tag string, out *bytes.Buffer) {
+	out.Write(before) // TODO: escaped?
+	serTagStartWithOptStyle(tag, style, out)
+	serLine(inside, out)
+	serTagEnd(tag, out)
+	serLine(rest, out)
+}
+
+func serSpanWithStyle(before []byte, style []byte, inside []byte, rest []byte, out *bytes.Buffer) {
 	serEscapedLine(before, out)
 
 	out.WriteString(fmt.Sprintf(`<span style="%s;">`, string(style)))
@@ -118,7 +152,17 @@ func serSpan(before []byte, style []byte, inside []byte, rest []byte, out *bytes
 	serLine(rest, out)
 }
 
-func isSpan(l []byte) ([]byte, []byte, []byte) {
+func serSpanWithLang(before []byte, lang []byte, inside []byte, rest []byte, out *bytes.Buffer) {
+	serEscapedLine(before, out)
+
+	out.WriteString(fmt.Sprintf(`<span lang="%s">`, string(lang)))
+	serLine(inside, out)
+	out.WriteString("</span>")
+	serLine(rest, out)
+}
+
+// %{$style}$inside%$rest
+func isSpanWithStyle(l []byte) ([]byte, []byte, []byte) {
 	if len(l) < 4 {
 		return nil, nil, nil
 	}
@@ -136,9 +180,81 @@ func isSpan(l []byte) ([]byte, []byte, []byte) {
 	if endIdx == -1 {
 		return nil, nil, nil
 	}
-	span := l[:endIdx]
+	inside := l[:endIdx]
 	rest := l[endIdx+1:]
-	return style, span, rest
+	return inside, style, rest
+}
+
+// %[$lang]$inside%
+func isSpanWithLang(l []byte) ([]byte, []byte, []byte) {
+	if len(l) < 4 {
+		return nil, nil, nil
+	}
+	if l[0] != '%' && l[1] != '[' {
+		return nil, nil, nil
+	}
+	l = l[2:]
+	endIdx := bytes.IndexByte(l, ']')
+	if endIdx == -1 {
+		return nil, nil, nil
+	}
+	lang := l[:endIdx]
+	l = l[endIdx+1:]
+	endIdx = bytes.IndexByte(l, '%')
+	if endIdx == -1 {
+		return nil, nil, nil
+	}
+	inside := l[:endIdx]
+	rest := l[endIdx+1:]
+	return inside, lang, rest
+}
+
+// *{$style}$inside*
+func isStrongWithStyle(l []byte) ([]byte, []byte, []byte) {
+	if len(l) < 4 {
+		return nil, nil, nil
+	}
+	if l[0] != '*' || l[1] != '{' {
+		return nil, nil, nil
+	}
+	l = l[2:]
+	endIdx := bytes.IndexByte(l, '}')
+	if endIdx == -1 {
+		return nil, nil, nil
+	}
+	style := l[:endIdx]
+	l = l[endIdx+1:]
+	endIdx = bytes.IndexByte(l, '*')
+	if endIdx == -1 {
+		return nil, nil, nil
+	}
+	inside := l[:endIdx]
+	rest := l[endIdx+1:]
+	return inside, style, rest
+}
+
+// _($class)$inside_
+func isEmWithClass(l []byte) ([]byte, []byte, []byte) {
+	if len(l) < 4 {
+		return nil, nil, nil
+	}
+	if l[0] != '_' || l[1] != '(' {
+		return nil, nil, nil
+	}
+	l = l[2:]
+	endIdx := bytes.IndexByte(l, ')')
+	if endIdx == -1 {
+		return nil, nil, nil
+	}
+	class := l[:endIdx]
+	l = l[endIdx+1:]
+	endIdx = bytes.IndexByte(l, '_')
+	if endIdx == -1 {
+		return nil, nil, nil
+	}
+	inside := l[:endIdx]
+	rest := l[endIdx+1:]
+	return inside, class, rest
 }
 
 func is2Byte(l []byte, b byte) ([]byte, []byte) {
@@ -188,18 +304,30 @@ func serLine(l []byte, out *bytes.Buffer) {
 	for i := 0; i < len(l); i++ {
 		b := l[i]
 		if b == '_' {
-			if italic, rest := isItalic(l[i:]); italic != nil {
-				serTag(l[:i], italic, rest, "i", out)
+			if inside, rest := isItalic(l[i:]); inside != nil {
+				serTag(l[:i], inside, rest, "i", out)
+				return
+			}
+			if inside, class, rest := isEmWithClass(l[i:]); inside != nil {
+				serTagWithClass(l[:i], inside, class, rest, "em", out)
 				return
 			}
 		} else if b == '*' {
-			if bold, rest := isBold(l[i:]); bold != nil {
-				serTag(l[:i], bold, rest, "b", out)
+			if inside, rest := isBold(l[i:]); inside != nil {
+				serTag(l[:i], inside, rest, "b", out)
+				return
+			}
+			if inside, style, rest := isStrongWithStyle(l[i:]); inside != nil {
+				serTagWithStyle(l[:i], inside, style, rest, "strong", out)
 				return
 			}
 		} else if b == '%' {
-			if style, inside, rest := isSpan(l[i:]); style != nil {
-				serSpan(l[:i], style, inside, rest, out)
+			if inside, style, rest := isSpanWithStyle(l[i:]); inside != nil {
+				serSpanWithStyle(l[:i], style, inside, rest, out)
+				return
+			}
+			if inside, lang, rest := isSpanWithLang(l[i:]); inside != nil {
+				serSpanWithLang(l[:i], lang, inside, rest, out)
 				return
 			}
 		}

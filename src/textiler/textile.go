@@ -15,7 +15,7 @@ func slice(d []byte, start, end int) []byte {
 	if end > 0 {
 		return d[start:end]
 	}
-	end = len(d) -1 + end
+	end = len(d) - 1 + end
 	return d[start:end]
 }
 
@@ -65,13 +65,13 @@ func serHtmlEscaped(d []byte, out *bytes.Buffer) {
 		} else {
 			out.WriteByte(b)
 		}
-	}	
+	}
 }
 
 func serHtmlEscapedLines(lines [][]byte, out *bytes.Buffer) {
 	for i, l := range lines {
 		serHtmlEscaped(l, out)
-		if i != len(lines) - 1 {
+		if i != len(lines)-1 {
 			out.Write(newline)
 		}
 	}
@@ -93,10 +93,69 @@ func isHtmlParagraph(lines [][]byte) bool {
 	return bytes.Equal(tag, tag2)
 }
 
+func serTag(before []byte, inside []byte, rest []byte, tag string, out *bytes.Buffer) {
+	out.Write(before)
+
+	out.WriteByte('<')
+	out.WriteString(tag)
+	out.WriteByte('>')
+
+	serLine(inside, out)
+
+	out.WriteString("</")
+	out.WriteString(tag)
+	out.WriteByte('>')
+
+	serLine(rest, out)
+}
+
+func is2Byte(l []byte, b byte) ([]byte, []byte) {
+	if len(l) < 4 {
+		return nil, nil
+	}
+	if l[0] != b || l[1] != b {
+		return nil, nil
+	}
+	for i := 2; i < len(l)-1; i++ {
+		if l[i] == b {
+			if l[i+1] == b {
+				return l[2:i], l[i+2:]
+			}
+		}
+	}
+	return nil, nil
+}
+
+func isItalic(l []byte) ([]byte, []byte) {
+	return is2Byte(l, '_')
+}
+
+func isBold(l []byte) ([]byte, []byte) {
+	return is2Byte(l, '*')
+}
+
+func serLine(l []byte, out *bytes.Buffer) {
+	for i := 0; i < len(l); i++ {
+		b := l[i]
+		if b == '_' {
+			if italic, rest := isItalic(l[i:]); italic != nil {
+				serTag(l[:i], italic, rest, "i", out)
+				return
+			}
+		} else if b == '*' {
+			if bold, rest := isBold(l[i:]); bold != nil {
+				serTag(l[:i], bold, rest, "b", out)
+				return
+			}
+		}
+	}
+	out.Write(l)
+}
+
 func serLines(lines [][]byte, out *bytes.Buffer) {
 	for i, l := range lines {
-		out.Write(l)
-		if i != len(lines) - 1 {
+		serLine(l, out)
+		if i != len(lines)-1 {
 			// TODO: in xhtml mode, output "<br />"
 			out.WriteString("<br>")
 			out.Write(newline)
@@ -113,7 +172,7 @@ func serParagraph(lines [][]byte, out *bytes.Buffer) {
 func serHtmlParagraph(lines [][]byte, out *bytes.Buffer) {
 	out.Write(lines[0])
 	out.Write(newline)
-	middleLines := lines[1:len(lines)-1]
+	middleLines := lines[1 : len(lines)-1]
 	serHtmlEscapedLines(middleLines, out)
 	out.Write(newline)
 	out.Write(lines[len(lines)-1])
@@ -129,7 +188,7 @@ func serParagraphs(paragraphs [][][]byte, out *bytes.Buffer) {
 		} else {
 			serParagraph(para, out)
 		}
-		if i != len(paragraphs) - 1 {
+		if i != len(paragraphs)-1 {
 			out.Write(newline)
 		}
 	}
@@ -148,7 +207,7 @@ func groupIntoParagraphs(lines [][]byte) [][][]byte {
 			}
 			// TODO: to be more efficient, reset the size to 0 instead of
 			// re-allocating a new one
-			currPara = make([][]byte,0)
+			currPara = make([][]byte, 0)
 		}
 		if len(l) > 0 {
 			currPara = append(currPara, l)

@@ -1,15 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"textiler"
-	"bytes"
 )
 
 var passed = 0
 
 func testHtml() {
-	passingTests := []int{0,1}
+	passingTests := []int{0, 1}
 	for _, i := range passingTests {
 		s := textiler.HtmlTests[i*2]
 		expected := []byte(textiler.HtmlTests[i*2+1])
@@ -24,7 +24,7 @@ func testHtml() {
 }
 
 func testXhtml() {
-	passingTests := []int{0,1,2}
+	passingTests := []int{0, 1, 2}
 	for _, i := range passingTests {
 		s := textiler.XhtmlTests[i*2]
 		expected := []byte(textiler.XhtmlTests[i*2+1])

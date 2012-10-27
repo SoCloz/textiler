@@ -44,15 +44,6 @@ func splitIntoLines(d []byte) [][]byte {
 	return bytes.Split(d, []byte{'\n'})
 }
 
-func serLines(lines [][]byte, out *bytes.Buffer) {
-	for i, l := range lines {
-		out.Write(l)
-		if i != len(lines) - 1 {
-			out.Write(newline)
-		}
-	}
-}
-
 func needsHtmlEscaping(b byte) []byte {
 	switch b {
 	case '"':
@@ -100,6 +91,17 @@ func isHtmlParagraph(lines [][]byte) bool {
 		return false
 	}
 	return bytes.Equal(tag, tag2)
+}
+
+func serLines(lines [][]byte, out *bytes.Buffer) {
+	for i, l := range lines {
+		out.Write(l)
+		if i != len(lines) - 1 {
+			// TODO: in xhtml mode, output "<br />"
+			out.WriteString("<br>")
+			out.Write(newline)
+		}
+	}
 }
 
 func serParagraph(lines [][]byte, out *bytes.Buffer) {
@@ -200,6 +202,6 @@ func ToHtml(d []byte, flagDumpLines, flagDumpParagraphs bool) []byte {
 	return out.Bytes()
 }
 
-func ToXhtml(d []byte) []byte {
-	return d
+func ToXhtml(d []byte, flagDumpLines, flagDumpParagraphs bool) []byte {
+	return ToHtml(d, flagDumpLines, flagDumpParagraphs)
 }

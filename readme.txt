@@ -1,4 +1,1 @@
-textiler
-========
-
-Textile converter for Go
+Textiler is a textile to html converter for Go.

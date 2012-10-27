@@ -46,8 +46,9 @@ func splitIntoLines(d []byte) [][]byte {
 
 func needsHtmlEscaping(b byte) []byte {
 	switch b {
-	case '"':
-		return []byte("&quot;")
+
+	/*	case '"':
+		return []byte("&quot;")*/
 	case '&':
 		return []byte("&amp;")
 	case '<':
@@ -354,10 +355,16 @@ func serParagraph(lines [][]byte, out *bytes.Buffer) {
 
 func serHtmlParagraph(lines [][]byte, out *bytes.Buffer) {
 	out.Write(lines[0])
-	out.Write(newline)
-	middleLines := lines[1 : len(lines)-1]
-	serHtmlEscapedLines(middleLines, out)
-	out.Write(newline)
+	if isHtmlParagraph(lines[1 : len(lines)-1]) {
+		out.Write(newline)
+		serHtmlParagraph(lines[1:len(lines)-1], out)
+		out.Write(newline)
+	} else {
+		out.Write(newline)
+		middleLines := lines[1 : len(lines)-1]
+		serHtmlEscapedLines(middleLines, out)
+		out.Write(newline)
+	}
 	out.Write(lines[len(lines)-1])
 }
 

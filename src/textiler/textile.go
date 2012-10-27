@@ -7,6 +7,23 @@ import (
 
 var newline = []byte{'\n'}
 
+type TextileRenderer struct {
+	isXhtml bool
+	out     bytes.Buffer
+}
+
+type TextileParser struct {
+	r     TextileRenderer
+	links map[string]string
+}
+
+func NewTextileParser(renderer TextileRenderer) *TextileParser {
+	return &TextileParser{
+		r:     renderer,
+		links: make(map[string]string),
+	}
+}
+
 func lastByte(d []byte) byte {
 	return d[len(d)-1]
 }
@@ -194,7 +211,7 @@ func isSpanWithStyle(l []byte) ([]byte, []byte, []byte) {
 	return inside, style, rest
 }
 
-// %[$lang]$inside%
+// %[$lang]$inside%$rest
 func isSpanWithLang(l []byte) ([]byte, []byte, []byte) {
 	if len(l) < 4 {
 		return nil, nil, nil
@@ -218,7 +235,7 @@ func isSpanWithLang(l []byte) ([]byte, []byte, []byte) {
 	return inside, lang, rest
 }
 
-// *{$style}$inside*
+// *{$style}$inside*$rest
 func isStrongWithStyle(l []byte) ([]byte, []byte, []byte) {
 	if len(l) < 4 {
 		return nil, nil, nil
@@ -242,7 +259,7 @@ func isStrongWithStyle(l []byte) ([]byte, []byte, []byte) {
 	return inside, style, rest
 }
 
-// _($class)$inside_
+// _($class)$inside_$rest
 func isEmWithClass(l []byte) ([]byte, []byte, []byte) {
 	if len(l) < 4 {
 		return nil, nil, nil

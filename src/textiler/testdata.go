@@ -2,7 +2,7 @@ package textiler
 
 // Those tests are based on https://github.com/ikirudennis/python-textile/blob/master/textile/tests/__init__.py
 
-var html_tests = []string{
+var HtmlTests = []string{
 	`I spoke.
 And none replied.`,
 	`	<p>I spoke.<br>
@@ -103,7 +103,7 @@ p. quux
 
 	<p>quux</p>`,
 }
-var xhtml_tests = []string{
+var XhtmlTests = []string{
 	`hello, world`,
 	`	<p>hello, world</p>`,
 

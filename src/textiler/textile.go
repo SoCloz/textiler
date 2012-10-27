@@ -109,6 +109,38 @@ func serTag(before []byte, inside []byte, rest []byte, tag string, out *bytes.Bu
 	serLine(rest, out)
 }
 
+func serSpan(before []byte, style []byte, inside []byte, rest []byte, out *bytes.Buffer) {
+	serEscapedLine(before, out)
+
+	out.WriteString(fmt.Sprintf(`<span style="%s;">`, string(style)))
+	serLine(inside, out)
+	out.WriteString("</span>")
+	serLine(rest, out)
+}
+
+func isSpan(l []byte) ([]byte, []byte, []byte) {
+	if len(l) < 4 {
+		return nil, nil, nil
+	}
+	if l[0] != '%' && l[1] != '{' {
+		return nil, nil, nil
+	}
+	l = l[2:]
+	endIdx := bytes.IndexByte(l, '}')
+	if endIdx == -1 {
+		return nil, nil, nil
+	}
+	style := l[:endIdx]
+	l = l[endIdx+1:]
+	endIdx = bytes.IndexByte(l, '%')
+	if endIdx == -1 {
+		return nil, nil, nil
+	}
+	span := l[:endIdx]
+	rest := l[endIdx+1:]
+	return style, span, rest
+}
+
 func is2Byte(l []byte, b byte) ([]byte, []byte) {
 	if len(l) < 4 {
 		return nil, nil
@@ -134,6 +166,24 @@ func isBold(l []byte) ([]byte, []byte) {
 	return is2Byte(l, '*')
 }
 
+func needsEscaping(b byte) []byte {
+	switch b {
+	case '\'':
+		return []byte("&#8217;")
+	}
+	return nil
+}
+
+func serEscapedLine(l []byte, out *bytes.Buffer) {
+	for _, b := range l {
+		if esc := needsEscaping(b); esc != nil {
+			out.Write(esc)
+		} else {
+			out.WriteByte(b)
+		}
+	}
+}
+
 func serLine(l []byte, out *bytes.Buffer) {
 	for i := 0; i < len(l); i++ {
 		b := l[i]
@@ -147,9 +197,14 @@ func serLine(l []byte, out *bytes.Buffer) {
 				serTag(l[:i], bold, rest, "b", out)
 				return
 			}
+		} else if b == '%' {
+			if style, inside, rest := isSpan(l[i:]); style != nil {
+				serSpan(l[:i], style, inside, rest, out)
+				return
+			}
 		}
 	}
-	out.Write(l)
+	serEscapedLine(l, out)
 }
 
 func serLines(lines [][]byte, out *bytes.Buffer) {

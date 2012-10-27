@@ -28,6 +28,30 @@ func TestTextileHtml(t *testing.T) {
 	}
 }
 
+func TestIsSpan(t *testing.T) {
+	data := []string{
+		"%{color:red}%", "color:red", "", "",
+		"%{color:red}foo%", "color:red", "foo", "",
+		"%{color:red}inside%after", "color:red", "inside", "after",
+	}
+	var expected string
+	for i := 0; i < len(data)/4; i++ {
+		style, inside, rest := isSpan([]byte(data[i*4]))
+		expected = data[i*4+1]
+		if !bytes.Equal(style, []byte(expected)) {
+			t.Fatalf("\nExpected[%s]\nActual  [%s]", expected, string(style))
+		}
+		expected = data[i*4+2]
+		if !bytes.Equal(inside, []byte(expected)) {
+			t.Fatalf("\nExpected[%s]\nActual  [%s]", expected, string(inside))
+		}
+		expected = data[i*4+3]
+		if !bytes.Equal(rest, []byte(expected)) {
+			t.Fatalf("\nExpected[%s]\nActual  [%s]", expected, string(rest))
+		}
+	}
+}
+
 func TestSer(t *testing.T) {
 	data := []string{
 		"__f__", "<i>f</i>",
@@ -42,7 +66,7 @@ func TestSer(t *testing.T) {
 		expected := []byte(data[i*2+1])
 		actual := buf.Bytes()
 		if !bytes.Equal(expected, actual) {
-			t.Errorf("\nExpected[%s]\nActual  [%s]", string(expected), string(actual))
+			t.Fatalf("\nExpected[%s]\nActual  [%s]", string(expected), string(actual))
 		}
 	}
 }
@@ -58,10 +82,10 @@ func TestItalic(t *testing.T) {
 		r1, r2 := isItalic([]byte(italics[i*3]))
 		er1, er2 := []byte(italics[i*3+1]), []byte(italics[i*3+2])
 		if !bytes.Equal(r1, er1) {
-			t.Errorf("\nExpected[%#v]\nActual  [%#v]", er1, r1)
+			t.Fatalf("\nExpected[%#v]\nActual  [%#v]", er1, r1)
 		}
 		if !bytes.Equal(r2, er2) {
-			t.Errorf("\nExpected[%#v]\nActual  [%#v]", er2, r2)
+			t.Fatalf("\nExpected[%#v]\nActual  [%#v]", er2, r2)
 		}
 	}
 }
@@ -74,7 +98,7 @@ func TestTextileXhtml(t *testing.T) {
 		actual := textileToXhtml(s)
 		expected := XhtmlTests[i*2+1]
 		if actual != expected {
-			t.Errorf("\nExpected[%#v]\nActual  [%#v]", expected, actual)
+			t.Fatalf("\nExpected[%#v]\nActual  [%#v]", expected, actual)
 		}
 	}
 }

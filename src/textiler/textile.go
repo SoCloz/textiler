@@ -162,6 +162,14 @@ func serSpanWithLang(before []byte, lang []byte, inside []byte, rest []byte, out
 	serLine(rest, out)
 }
 
+func serUrl(before []byte, title []byte, url []byte, rest []byte, out *bytes.Buffer) {
+	serEscapedLine(before, out)
+	out.WriteString(fmt.Sprintf(`<a href="%s">`, string(url)))
+	out.Write(title)
+	out.WriteString("</a>")
+	serLine(rest, out)
+}
+
 // %{$style}$inside%$rest
 func isSpanWithStyle(l []byte) ([]byte, []byte, []byte) {
 	if len(l) < 4 {
@@ -331,6 +339,11 @@ func serLine(l []byte, out *bytes.Buffer) {
 				serSpanWithLang(l[:i], lang, inside, rest, out)
 				return
 			}
+		} else if b == '"' {
+			if title, url, rest := isUrl(l[i:]); title != nil {
+				serUrl(l[:i], title, url, rest, out)
+				return
+			}
 		}
 	}
 	serEscapedLine(l, out)
@@ -347,7 +360,92 @@ func serLines(lines [][]byte, out *bytes.Buffer) {
 	}
 }
 
+func serHLine(n int, rest []byte, out *bytes.Buffer) {
+	out.WriteString(fmt.Sprintf("\t<h%d>", n))
+	out.Write(rest) // TODO: escape?
+	out.WriteString(fmt.Sprintf("</h%d>", n))
+}
+
+// h$n. $rest
+func isHLine(l []byte) (int, []byte) {
+	if len(l) < 4 {
+		return -1, nil
+	}
+	if l[0] != 'h' || l[2] != '.' || l[3] != ' ' {
+		return -1, nil
+	}
+	n := l[1] - '0'
+	if n < 1 || n > 6 {
+		return -1, nil
+	}
+	return int(n), l[4:]
+}
+
+// TODO: this is more complex
+func isUrlEnd(b byte) bool {
+	i := bytes.IndexByte([]byte{' '}, b)
+	return i != -1
+}
+
+func detectUrl(l []byte) ([]byte, []byte) {
+	//fmt.Printf("detectUrl: '%s'\n", string(l))
+	i := bytes.Index(l, []byte{':', '/', '/'})
+	if i == -1 {
+		//fmt.Printf("detectUrl: '%s', didn't find '://'\n", string(l))
+		return nil, nil
+	}
+	s := string(l[:i])
+	if !(s == "http" || s == "https") {
+		//fmt.Printf("detectUrl: '%s', s='%s'\n", string(l), s)
+		return nil, nil
+	}
+	i += 3
+	for i < len(l) {
+		if isUrlEnd(l[i]) {
+			//fmt.Printf("detectUrl: '%s', url:'%s', rest:'%s'\n", string(l), string(l[:i]), string(l[i:]))
+			return l[:i], l[i:]
+		}
+		i += 1
+	}
+	return l, l[0:0]
+}
+
+// "$title":$url
+func isUrl(l []byte) ([]byte, []byte, []byte) {
+	if len(l) < 4 {
+		return nil, nil, nil
+	}
+	if l[0] != '"' {
+		return nil, nil, nil
+	}
+	l = l[1:]
+	endIdx := bytes.IndexByte(l, '"')
+	if endIdx == -1 {
+		return nil, nil, nil
+	}
+	title := l[:endIdx]
+	l = l[endIdx+1:]
+	if len(l) < 1 || l[0] != ':' {
+		return nil, nil, nil
+	}
+	l = l[1:]
+	url, rest := detectUrl(l)
+	if url == nil {
+		return nil, nil, nil
+	}
+	return title, url, rest
+}
+
 func serParagraph(lines [][]byte, out *bytes.Buffer) {
+	if len(lines) > 0 {
+		if n, rest := isHLine(lines[0]); n != -1 {
+			serHLine(n, rest, out)
+			if len(lines) > 1 {
+				serParagraph(lines[1:], out)
+			}
+			return
+		}
+	}
 	out.WriteString("\t<p>")
 	serLines(lines, out)
 	out.WriteString("</p>")

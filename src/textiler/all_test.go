@@ -4,6 +4,7 @@ package textiler
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 )
 
@@ -36,7 +37,7 @@ func TestIsSpan(t *testing.T) {
 	}
 	var expected string
 	for i := 0; i < len(data)/4; i++ {
-		style, inside, rest := isSpan([]byte(data[i*4]))
+		inside, style, rest := isSpanWithStyle([]byte(data[i*4]))
 		expected = data[i*4+1]
 		if !bytes.Equal(style, []byte(expected)) {
 			t.Fatalf("\nExpected[%s]\nActual  [%s]", expected, string(style))
@@ -48,6 +49,54 @@ func TestIsSpan(t *testing.T) {
 		expected = data[i*4+3]
 		if !bytes.Equal(rest, []byte(expected)) {
 			t.Fatalf("\nExpected[%s]\nActual  [%s]", expected, string(rest))
+		}
+	}
+}
+
+func TestIsHLine(t *testing.T) {
+	data := []string{
+		"h1. foo", "1", "foo",
+		"h0. bar", "", "",
+		"h3.rest", "", "",
+		"h6. loh", "6", "loh",
+	}
+	for i := 0; i < len(data)/3; i++ {
+		n, rest := isHLine([]byte(data[i*3]))
+		expectedN := data[i*3+1]
+		if n < 0 {
+			if expectedN != "" {
+				t.Fatalf("\nExpected[%s]\nActual  [%d]", expectedN, n)
+			}
+		} else {
+			if expectedN != fmt.Sprintf("%d", n) {
+				t.Fatalf("\nExpected[%s]\nActual  [%d]", expectedN, n)
+			}
+			expectedRest := data[i*3+2]
+			if !bytes.Equal(rest, []byte(expectedRest)) {
+				t.Fatalf("\nExpected[%s]\nActual  [%s]", expectedRest, string(rest))
+			}
+		}
+	}
+}
+
+func TestUrl(t *testing.T) {
+	data := []string{
+		`"Hobix":http://hobix.com/`, "Hobix", "http://hobix.com/", "",
+		`"":http://foo end`, "", "http://foo", " end",
+	}
+	for i := 0; i < len(data)/4; i++ {
+		title, url, rest := isUrl([]byte(data[i*4]))
+		titleExpected := data[i*4+1]
+		urlExpected := data[i*4+2]
+		restExpected := data[i*4+3]
+		if !bytes.Equal(title, []byte(titleExpected)) {
+			t.Fatalf("\nExpected1[%s]\nActual   [%s]", string(titleExpected), string(title))
+		}
+		if !bytes.Equal(url, []byte(urlExpected)) {
+			t.Fatalf("\nExpected2[%s]\nActual   [%s]", string(urlExpected), string(url))
+		}
+		if !bytes.Equal(rest, []byte(restExpected)) {
+			t.Fatalf("\nExpected3[%s]\nActual   [%s]", string(restExpected), string(rest))
 		}
 	}
 }

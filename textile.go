@@ -63,12 +63,16 @@ func slice(d []byte, start, end int) []byte {
 	return d[start:end]
 }
 
-func extractStartTag(line []byte) ([]byte, bool) {
-	if len(line) < 3 {
+func extractStartTag(l []byte) ([]byte, bool) {
+	if len(l) < 3 {
 		return nil, false
 	}
-	if line[0] == '<' && lastByte(line) == '>' {
-		return slice(line, 1, -2), true
+	if l[0] == '<' && lastByte(l) == '>' {
+		idx := bytes.IndexByte(l, ' ')
+		if idx != -1 {
+			return l[1:idx], true
+		}
+		return slice(l, 1, -2), true
 	}
 	return nil, false
 }
@@ -86,6 +90,16 @@ func extractEndTag(line []byte) ([]byte, bool) {
 func splitIntoLines(d []byte) [][]byte {
 	// TODO: should handle CR, LF, CRLF
 	return bytes.Split(d, []byte{'\n'})
+}
+
+func isHtmlLine(l []byte) bool {
+	if _, ok := extractStartTag(l); ok {
+		return true
+	}
+	if _, ok := extractEndTag(l); ok {
+		return true
+	}
+	return false
 }
 
 // An html paragraph is where the first line is <$tag>, last line is </$tag>
@@ -433,6 +447,11 @@ func needsEscaping(b byte) []byte {
 }
 
 func (p *TextileParser) serEscapedLine(l []byte) {
+	if isHtmlLine(l) {
+		p.out.Write(l)
+		return
+	}
+
 	for _, b := range l {
 		if esc := needsEscaping(b); esc != nil {
 			p.out.Write(esc)
@@ -560,9 +579,9 @@ func (p *TextileParser) serP(s []byte) {
 	p.out.WriteString(fmt.Sprintf("\t<p>%s</p>", string(s)))
 }
 
-func (p *TextileParser) serHLine(n int, rest []byte) {
+func (p *TextileParser) serHLine(n int, inside []byte) {
 	p.out.WriteString(fmt.Sprintf("\t<h%d>", n))
-	p.out.Write(rest) // TODO: escape?
+	p.out.Write(inside) // TODO: escape?
 	p.out.WriteString(fmt.Sprintf("</h%d>", n))
 }
 
@@ -624,8 +643,11 @@ func (p *TextileParser) serLines(lines [][]byte) {
 	for i, l := range lines {
 		p.serLine(l)
 		if i != len(lines)-1 {
-			// TODO: in xhtml mode, output "<br />"
-			p.out.WriteString("<br>")
+			if p.r.isXhtml() {
+				p.out.WriteString("<br />")
+			} else {
+				p.out.WriteString("<br>")
+			}
 			p.out.Write(newline)
 		}
 	}
@@ -633,8 +655,11 @@ func (p *TextileParser) serLines(lines [][]byte) {
 
 func (p *TextileParser) serParagraph(lines [][]byte) {
 	if len(lines) > 0 {
-		if n, rest := isHLine(lines[0]); n != -1 {
-			p.serHLine(n, rest)
+		l := lines[0]
+		//fmt.Printf("serParagraph(): %s\n", string(l))
+		if n, inside := isHLine(l); n != -1 {
+			//fmt.Printf("serParagraph(): h%d '%s'\n", n, string(inside))
+			p.serHLine(n, inside)
 			if len(lines) > 1 {
 				p.serParagraph(lines[1:])
 			}

@@ -63,6 +63,7 @@ func TestIsHLine(t *testing.T) {
 		"h1. foo", "1", "foo",
 		"h0. bar", "", "",
 		"h3.rest", "", "",
+		"h3. rest", "3", "rest",
 		"h6. loh", "6", "loh",
 	}
 	for i := 0; i < len(data)/3; i++ {
@@ -129,6 +130,7 @@ func TestSerLine(t *testing.T) {
 		expected := []byte(data[i*2+1])
 		actual := p.out.Bytes()
 		if !bytes.Equal(expected, actual) {
+			ToHtml([]byte(s), false, true)
 			t.Fatalf("\nSrc:[%s]\nExp:[%s]\nGot:[%s]", s, string(expected), string(actual))
 		}
 	}
@@ -154,7 +156,6 @@ func TestItalic(t *testing.T) {
 }
 
 func TestTextileHtml(t *testing.T) {
-	// TODO: for now mark tests that we expect to pass explicitly
 	lastPassingTest := 12
 	for i := 0; i <= lastPassingTest; i++ {
 		s := HtmlTests[i*2]
@@ -169,8 +170,10 @@ func TestTextileHtml(t *testing.T) {
 
 func TestTextileXhtml(t *testing.T) {
 	// TODO: for now mark tests that we expect to pass explicitly
-	lastPassingTest := 2
-	for i := 0; i <= lastPassingTest; i++ {
+	// 4,5,6,7,8,9,10 - smartypants for '"'
+	// TODO: 14 - bq.
+	passingTests := []int{0, 1, 2, 3, 11, 12, 13}
+	for _, i := range passingTests {
 		s := XhtmlTests[i*2]
 		actual := textileToXhtml(s)
 		expected := XhtmlTests[i*2+1]

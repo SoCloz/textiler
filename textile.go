@@ -397,20 +397,26 @@ func isUrlRef(l []byte) ([]byte, []byte) {
 	return name, url
 }
 
-// notextile. $rest
-func isNoTextile(l []byte) []byte {
-	if bytes.HasPrefix(l, []byte("notextile. ")) {
-		return l[11:]
+func startsWith(l, prefix []byte) []byte {
+	if bytes.HasPrefix(l, prefix) {
+		return l[len(prefix):]
 	}
 	return nil
 }
 
+// notextile. $rest
+func isNoTextile(l []byte) []byte {
+	return startsWith(l, []byte("notextile. "))
+}
+
+// bq. $rest
+func isBlockQuote(l []byte) []byte {
+	return startsWith(l, []byte("bq. "))
+}
+
 // p. $rest
 func isP(l []byte) []byte {
-	if bytes.HasPrefix(l, []byte("p. ")) {
-		return l[3:]
-	}
-	return nil
+	return startsWith(l, []byte("p. "))
 }
 
 func needsHtmlEscaping(b byte) []byte {
@@ -579,6 +585,12 @@ func (p *TextileParser) serP(s []byte) {
 	p.out.WriteString(fmt.Sprintf("\t<p>%s</p>", string(s)))
 }
 
+func (p *TextileParser) serBlockQuote(s []byte) {
+	p.out.WriteString("\t<blockquote>\n\t")
+	p.serP(s)
+	p.out.WriteString("\n\t</blockquote>")
+}
+
 func (p *TextileParser) serHLine(n int, inside []byte) {
 	p.out.WriteString(fmt.Sprintf("\t<h%d>", n))
 	p.out.Write(inside) // TODO: escape?
@@ -674,6 +686,10 @@ func (p *TextileParser) serParagraph(lines [][]byte) {
 		}
 		if rest := isP(l); rest != nil {
 			p.serP(rest)
+			return
+		}
+		if rest := isBlockQuote(l); rest != nil {
+			p.serBlockQuote(rest)
 			return
 		}
 	}

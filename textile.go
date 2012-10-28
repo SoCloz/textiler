@@ -245,6 +245,22 @@ func isEmWithClass(l []byte) ([]byte, []byte, []byte) {
 	return inside, class, rest
 }
 
+// @$code@$rest
+func isCode(l []byte) ([]byte, []byte) {
+	if len(l) < 2 {
+		return nil, nil
+	}
+	if l[0] != '@' {
+		return nil, nil
+	}
+	l = l[1:]
+	endIdx := bytes.IndexByte(l, '@')
+	if endIdx == -1 {
+		return nil, nil
+	}
+	return l[:endIdx], l[endIdx+1:]
+}
+
 func is2Byte(l []byte, b byte) ([]byte, []byte) {
 	if len(l) < 4 {
 		return nil, nil
@@ -262,10 +278,12 @@ func is2Byte(l []byte, b byte) ([]byte, []byte) {
 	return nil, nil
 }
 
+// __$italic__$rest
 func isItalic(l []byte) ([]byte, []byte) {
 	return is2Byte(l, '_')
 }
 
+// **$bold**$rest
 func isBold(l []byte) ([]byte, []byte) {
 	return is2Byte(l, '*')
 }
@@ -363,6 +381,22 @@ func isUrlRef(l []byte) ([]byte, []byte) {
 		return nil, nil
 	}
 	return name, url
+}
+
+// notextile. $rest
+func isNoTextile(l []byte) []byte {
+	if bytes.HasPrefix(l, []byte("notextile. ")) {
+		return l[11:]
+	}
+	return nil
+}
+
+// p. $rest
+func isP(l []byte) []byte {
+	if bytes.HasPrefix(l, []byte("p. ")) {
+		return l[3:]
+	}
+	return nil
 }
 
 func needsHtmlEscaping(b byte) []byte {
@@ -491,6 +525,12 @@ func (p *TextileParser) serUrl(before, title, url, rest []byte) {
 	p.serLine(rest)
 }
 
+func (p *TextileParser) serCode(before, inside, rest []byte) {
+	p.serEscapedLine(before)
+	p.out.WriteString(fmt.Sprintf(`<code>%s</code>`, string(inside)))
+	p.serLine(rest)
+}
+
 func (p *TextileParser) serImg(before []byte, imgSrc []byte, alt []byte, style int, url []byte, rest []byte) {
 	p.serEscapedLine(before)
 	if len(url) > 0 {
@@ -510,6 +550,14 @@ func (p *TextileParser) serImg(before []byte, imgSrc []byte, alt []byte, style i
 		p.out.WriteString("</a>")
 	}
 	p.serLine(rest)
+}
+
+func (p *TextileParser) serNoTextile(s []byte) {
+	p.out.Write(s)
+}
+
+func (p *TextileParser) serP(s []byte) {
+	p.out.WriteString(fmt.Sprintf("\t<p>%s</p>", string(s)))
 }
 
 func (p *TextileParser) serHLine(n int, rest []byte) {
@@ -562,6 +610,11 @@ func (p *TextileParser) serLine(l []byte) {
 				p.serImg(l[:i], imgSrc, alt, style, url, rest)
 				return
 			}
+		} else if b == '@' {
+			if inside, rest := isCode(l[i:]); inside != nil {
+				p.serCode(l[:i], inside, rest)
+				return
+			}
 		}
 	}
 	p.serEscapedLine(l)
@@ -588,6 +641,18 @@ func (p *TextileParser) serParagraph(lines [][]byte) {
 			return
 		}
 	}
+	if len(lines) == 1 {
+		l := lines[0]
+		if rest := isNoTextile(l); rest != nil {
+			p.serNoTextile(rest)
+			return
+		}
+		if rest := isP(l); rest != nil {
+			p.serP(rest)
+			return
+		}
+	}
+
 	p.out.WriteString("\t<p>")
 	p.serLines(lines)
 	p.out.WriteString("</p>")

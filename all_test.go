@@ -118,6 +118,9 @@ func TestSerLine(t *testing.T) {
 		`!http://hobix.com/sample.jpg!`, `<img src="http://hobix.com/sample.jpg" alt="">`,
 		`!openwindow1.gif(Bunny.)!`, `<img src="openwindow1.gif" title="Bunny." alt="Bunny.">`,
 		`!openwindow1.gif!:http://hobix.com/`, `<a href="http://hobix.com/" class="img"><img src="openwindow1.gif" alt=""></a>`,
+		`@p@`, "<code>p</code>",
+		`before@foo@`, "before<code>foo</code>",
+		`bef@bar@after`, "bef<code>bar</code>after",
 	}
 	for i := 0; i < len(data)/2; i++ {
 		p := NewParserWithRenderer(false)
@@ -126,7 +129,7 @@ func TestSerLine(t *testing.T) {
 		expected := []byte(data[i*2+1])
 		actual := p.out.Bytes()
 		if !bytes.Equal(expected, actual) {
-			t.Fatalf("\nTextile [%s]\nExpected[%s]\nActual  [%s]", s, string(expected), string(actual))
+			t.Fatalf("\nSrc:[%s]\nExp:[%s]\nGot:[%s]", s, string(expected), string(actual))
 		}
 	}
 }
@@ -152,14 +155,14 @@ func TestItalic(t *testing.T) {
 
 func TestTextileHtml(t *testing.T) {
 	// TODO: for now mark tests that we expect to pass explicitly
-	lastPassingTest := 11
+	lastPassingTest := 12
 	for i := 0; i <= lastPassingTest; i++ {
 		s := HtmlTests[i*2]
 		actual := textileToHtml(s)
 		expected := HtmlTests[i*2+1]
 		if actual != expected {
 			ToHtml([]byte(s), false, true)
-			t.Fatalf("\nSrc:'%s'\n\nExp:'%#v'\n\nGot:'%#v'\n", s, expected, actual)
+			t.Fatalf("\nSrc:%#v\n\nExp:%#v\n\nGot:%#v\n", s, expected, actual)
 		}
 	}
 }
@@ -173,7 +176,7 @@ func TestTextileXhtml(t *testing.T) {
 		expected := XhtmlTests[i*2+1]
 		if actual != expected {
 			ToXhtml([]byte(s), false, true)
-			t.Fatalf("\nSrc:'%s'\n\nExp:'%#v'\n\nGot:'%#v'\n", s, expected, actual)
+			t.Fatalf("\nSrc:%#v\n\nExp:%#v\n\nGot:%#v\n", s, expected, actual)
 		}
 	}
 }

@@ -88,58 +88,6 @@ func splitIntoLines(d []byte) [][]byte {
 	return bytes.Split(d, []byte{'\n'})
 }
 
-func needsHtmlEscaping(b byte) []byte {
-	switch b {
-
-	/*	case '"':
-		return []byte("&quot;")*/
-	case '&':
-		return []byte("&amp;")
-	case '<':
-		return []byte("&lt;")
-	case '>':
-		return []byte("&gt;")
-	}
-	return nil
-}
-
-func (p *TextileParser) serHtmlEscaped(d []byte) {
-	for _, b := range d {
-		if esc := needsHtmlEscaping(b); esc != nil {
-			p.out.Write(esc)
-		} else {
-			p.out.WriteByte(b)
-		}
-	}
-}
-
-func needsEscaping(b byte) []byte {
-	switch b {
-	case '\'':
-		return []byte("&#8217;")
-	}
-	return nil
-}
-
-func (p *TextileParser) serEscapedLine(l []byte) {
-	for _, b := range l {
-		if esc := needsEscaping(b); esc != nil {
-			p.out.Write(esc)
-		} else {
-			p.out.WriteByte(b)
-		}
-	}
-}
-
-func (p *TextileParser) serHtmlEscapedLines(lines [][]byte) {
-	for i, l := range lines {
-		p.serHtmlEscaped(l)
-		if i != len(lines)-1 {
-			p.out.Write(newline)
-		}
-	}
-}
-
 // An html paragraph is where the first line is <$tag>, last line is </$tag>
 func isHtmlParagraph(lines [][]byte) bool {
 	if len(lines) < 2 {
@@ -154,101 +102,6 @@ func isHtmlParagraph(lines [][]byte) bool {
 		return false
 	}
 	return bytes.Equal(tag, tag2)
-}
-
-func (p *TextileParser) serTagStartWithOptClass(tag string, class []byte) {
-	p.out.WriteByte('<')
-	p.out.WriteString(tag)
-	if class == nil {
-		p.out.WriteByte('>')
-	} else {
-		p.out.WriteString(fmt.Sprintf(` class="%s">`, string(class)))
-	}
-}
-
-func (p *TextileParser) serTagStartWithOptStyle(tag string, style []byte) {
-	p.out.WriteByte('<')
-	p.out.WriteString(tag)
-	if style == nil {
-		p.out.WriteByte('>')
-	} else {
-		p.out.WriteString(fmt.Sprintf(` style="%s;">`, string(style)))
-	}
-}
-
-func (p *TextileParser) serTagEnd(tag string) {
-	p.out.WriteString("</")
-	p.out.WriteString(tag)
-	p.out.WriteByte('>')
-}
-
-func (p *TextileParser) serTag(before, inside, rest []byte, tag string) {
-	p.out.Write(before) // TODO: escaped?
-	p.serTagStartWithOptClass(tag, nil)
-	p.serLine(inside)
-	p.serTagEnd(tag)
-	p.serLine(rest)
-}
-
-func (p *TextileParser) serTagWithClass(before, inside, class, rest []byte, tag string) {
-	p.out.Write(before) // TODO: escaped?
-	p.serTagStartWithOptClass(tag, class)
-	p.serLine(inside)
-	p.serTagEnd(tag)
-	p.serLine(rest)
-}
-
-func (p *TextileParser) serTagWithStyle(before, inside, style, rest []byte, tag string) {
-	p.out.Write(before) // TODO: escaped?
-	p.serTagStartWithOptStyle(tag, style)
-	p.serLine(inside)
-	p.serTagEnd(tag)
-	p.serLine(rest)
-}
-
-func (p *TextileParser) serSpanWithStyle(before, style, inside, rest []byte) {
-	p.serEscapedLine(before)
-	p.out.WriteString(fmt.Sprintf(`<span style="%s;">`, string(style)))
-	p.serLine(inside)
-	p.out.WriteString("</span>")
-	p.serLine(rest)
-}
-
-func (p *TextileParser) serSpanWithLang(before, lang, inside, rest []byte) {
-	p.serEscapedLine(before)
-	p.out.WriteString(fmt.Sprintf(`<span lang="%s">`, string(lang)))
-	p.serLine(inside)
-	p.out.WriteString("</span>")
-	p.serLine(rest)
-}
-
-func (p *TextileParser) serUrl(before, title, url, rest []byte) {
-	p.serEscapedLine(before)
-	p.out.WriteString(fmt.Sprintf(`<a href="%s">`, string(url)))
-	p.serEscapedLine(title)
-	p.out.WriteString("</a>")
-	p.serLine(rest)
-}
-
-func (p *TextileParser) serImg(before []byte, imgSrc []byte, alt []byte, style int, url []byte, rest []byte) {
-	p.serEscapedLine(before)
-	if len(url) > 0 {
-		p.out.WriteString(fmt.Sprintf(`<a href="%s" class="img">`, string(url)))
-	}
-	altStr := string(alt)
-	styleStr := ""
-	if style == STYLE_FLOAT_RIGHT {
-		styleStr = ` style="float: right;"`
-	}
-	if len(alt) > 0 {
-		p.out.WriteString(fmt.Sprintf(`<img src="%s"%s title="%s" alt="%s">`, string(imgSrc), styleStr, altStr, altStr))
-	} else {
-		p.out.WriteString(fmt.Sprintf(`<img src="%s"%s alt="">`, string(imgSrc), styleStr))
-	}
-	if len(url) > 0 {
-		p.out.WriteString("</a>")
-	}
-	p.serLine(rest)
 }
 
 // !$imgSrc($altOptional)!:$urlOptional
@@ -417,72 +270,6 @@ func isBold(l []byte) ([]byte, []byte) {
 	return is2Byte(l, '*')
 }
 
-func (p *TextileParser) serLine(l []byte) {
-	for i := 0; i < len(l); i++ {
-		b := l[i]
-		if b == '_' {
-			if inside, rest := isItalic(l[i:]); inside != nil {
-				p.serTag(l[:i], inside, rest, "i")
-				return
-			}
-			if inside, class, rest := isEmWithClass(l[i:]); inside != nil {
-				p.serTagWithClass(l[:i], inside, class, rest, "em")
-				return
-			}
-		} else if b == '*' {
-			if inside, rest := isBold(l[i:]); inside != nil {
-				p.serTag(l[:i], inside, rest, "b")
-				return
-			}
-			if inside, style, rest := isStrongWithStyle(l[i:]); inside != nil {
-				p.serTagWithStyle(l[:i], inside, style, rest, "strong")
-				return
-			}
-		} else if b == '%' {
-			if inside, style, rest := isSpanWithStyle(l[i:]); inside != nil {
-				p.serSpanWithStyle(l[:i], style, inside, rest)
-				return
-			}
-			if inside, lang, rest := isSpanWithLang(l[i:]); inside != nil {
-				p.serSpanWithLang(l[:i], lang, inside, rest)
-				return
-			}
-		} else if b == '"' {
-			if title, urlOrRefName, rest := isUrlOrRefName(l[i:]); title != nil {
-				if urlRef, ok := p.refs[string(urlOrRefName)]; ok {
-					p.serUrl(l[:i], title, urlRef.url, rest)
-				} else {
-					p.serUrl(l[:i], title, urlOrRefName, rest)
-				}
-				return
-			}
-		} else if b == '!' {
-			if imgSrc, alt, style, url, rest := isImg(l[i:]); imgSrc != nil {
-				p.serImg(l[:i], imgSrc, alt, style, url, rest)
-				return
-			}
-		}
-	}
-	p.serEscapedLine(l)
-}
-
-func (p *TextileParser) serLines(lines [][]byte) {
-	for i, l := range lines {
-		p.serLine(l)
-		if i != len(lines)-1 {
-			// TODO: in xhtml mode, output "<br />"
-			p.out.WriteString("<br>")
-			p.out.Write(newline)
-		}
-	}
-}
-
-func (p *TextileParser) serHLine(n int, rest []byte) {
-	p.out.WriteString(fmt.Sprintf("\t<h%d>", n))
-	p.out.Write(rest) // TODO: escape?
-	p.out.WriteString(fmt.Sprintf("</h%d>", n))
-}
-
 // h$n. $rest
 func isHLine(l []byte) (int, []byte) {
 	if len(l) < 4 {
@@ -576,6 +363,219 @@ func isUrlRef(l []byte) ([]byte, []byte) {
 		return nil, nil
 	}
 	return name, url
+}
+
+func needsHtmlEscaping(b byte) []byte {
+	switch b {
+
+	/*	case '"':
+		return []byte("&quot;")*/
+	case '&':
+		return []byte("&amp;")
+	case '<':
+		return []byte("&lt;")
+	case '>':
+		return []byte("&gt;")
+	}
+	return nil
+}
+
+func (p *TextileParser) serHtmlEscaped(d []byte) {
+	for _, b := range d {
+		if esc := needsHtmlEscaping(b); esc != nil {
+			p.out.Write(esc)
+		} else {
+			p.out.WriteByte(b)
+		}
+	}
+}
+
+func needsEscaping(b byte) []byte {
+	switch b {
+	case '\'':
+		return []byte("&#8217;")
+	}
+	return nil
+}
+
+func (p *TextileParser) serEscapedLine(l []byte) {
+	for _, b := range l {
+		if esc := needsEscaping(b); esc != nil {
+			p.out.Write(esc)
+		} else {
+			p.out.WriteByte(b)
+		}
+	}
+}
+
+func (p *TextileParser) serHtmlEscapedLines(lines [][]byte) {
+	for i, l := range lines {
+		p.serHtmlEscaped(l)
+		if i != len(lines)-1 {
+			p.out.Write(newline)
+		}
+	}
+}
+
+func (p *TextileParser) serTagStartWithOptClass(tag string, class []byte) {
+	p.out.WriteByte('<')
+	p.out.WriteString(tag)
+	if class == nil {
+		p.out.WriteByte('>')
+	} else {
+		p.out.WriteString(fmt.Sprintf(` class="%s">`, string(class)))
+	}
+}
+
+func (p *TextileParser) serTagStartWithOptStyle(tag string, style []byte) {
+	p.out.WriteByte('<')
+	p.out.WriteString(tag)
+	if style == nil {
+		p.out.WriteByte('>')
+	} else {
+		p.out.WriteString(fmt.Sprintf(` style="%s;">`, string(style)))
+	}
+}
+
+func (p *TextileParser) serTagEnd(tag string) {
+	p.out.WriteString("</")
+	p.out.WriteString(tag)
+	p.out.WriteByte('>')
+}
+
+func (p *TextileParser) serTag(before, inside, rest []byte, tag string) {
+	p.out.Write(before) // TODO: escaped?
+	p.serTagStartWithOptClass(tag, nil)
+	p.serLine(inside)
+	p.serTagEnd(tag)
+	p.serLine(rest)
+}
+
+func (p *TextileParser) serTagWithClass(before, inside, class, rest []byte, tag string) {
+	p.out.Write(before) // TODO: escaped?
+	p.serTagStartWithOptClass(tag, class)
+	p.serLine(inside)
+	p.serTagEnd(tag)
+	p.serLine(rest)
+}
+
+func (p *TextileParser) serTagWithStyle(before, inside, style, rest []byte, tag string) {
+	p.out.Write(before) // TODO: escaped?
+	p.serTagStartWithOptStyle(tag, style)
+	p.serLine(inside)
+	p.serTagEnd(tag)
+	p.serLine(rest)
+}
+
+func (p *TextileParser) serSpanWithStyle(before, style, inside, rest []byte) {
+	p.serEscapedLine(before)
+	p.out.WriteString(fmt.Sprintf(`<span style="%s;">`, string(style)))
+	p.serLine(inside)
+	p.out.WriteString("</span>")
+	p.serLine(rest)
+}
+
+func (p *TextileParser) serSpanWithLang(before, lang, inside, rest []byte) {
+	p.serEscapedLine(before)
+	p.out.WriteString(fmt.Sprintf(`<span lang="%s">`, string(lang)))
+	p.serLine(inside)
+	p.out.WriteString("</span>")
+	p.serLine(rest)
+}
+
+func (p *TextileParser) serUrl(before, title, url, rest []byte) {
+	p.serEscapedLine(before)
+	p.out.WriteString(fmt.Sprintf(`<a href="%s">`, string(url)))
+	p.serEscapedLine(title)
+	p.out.WriteString("</a>")
+	p.serLine(rest)
+}
+
+func (p *TextileParser) serImg(before []byte, imgSrc []byte, alt []byte, style int, url []byte, rest []byte) {
+	p.serEscapedLine(before)
+	if len(url) > 0 {
+		p.out.WriteString(fmt.Sprintf(`<a href="%s" class="img">`, string(url)))
+	}
+	altStr := string(alt)
+	styleStr := ""
+	if style == STYLE_FLOAT_RIGHT {
+		styleStr = ` style="float: right;"`
+	}
+	if len(alt) > 0 {
+		p.out.WriteString(fmt.Sprintf(`<img src="%s"%s title="%s" alt="%s">`, string(imgSrc), styleStr, altStr, altStr))
+	} else {
+		p.out.WriteString(fmt.Sprintf(`<img src="%s"%s alt="">`, string(imgSrc), styleStr))
+	}
+	if len(url) > 0 {
+		p.out.WriteString("</a>")
+	}
+	p.serLine(rest)
+}
+
+func (p *TextileParser) serHLine(n int, rest []byte) {
+	p.out.WriteString(fmt.Sprintf("\t<h%d>", n))
+	p.out.Write(rest) // TODO: escape?
+	p.out.WriteString(fmt.Sprintf("</h%d>", n))
+}
+
+func (p *TextileParser) serLine(l []byte) {
+	for i := 0; i < len(l); i++ {
+		b := l[i]
+		if b == '_' {
+			if inside, rest := isItalic(l[i:]); inside != nil {
+				p.serTag(l[:i], inside, rest, "i")
+				return
+			}
+			if inside, class, rest := isEmWithClass(l[i:]); inside != nil {
+				p.serTagWithClass(l[:i], inside, class, rest, "em")
+				return
+			}
+		} else if b == '*' {
+			if inside, rest := isBold(l[i:]); inside != nil {
+				p.serTag(l[:i], inside, rest, "b")
+				return
+			}
+			if inside, style, rest := isStrongWithStyle(l[i:]); inside != nil {
+				p.serTagWithStyle(l[:i], inside, style, rest, "strong")
+				return
+			}
+		} else if b == '%' {
+			if inside, style, rest := isSpanWithStyle(l[i:]); inside != nil {
+				p.serSpanWithStyle(l[:i], style, inside, rest)
+				return
+			}
+			if inside, lang, rest := isSpanWithLang(l[i:]); inside != nil {
+				p.serSpanWithLang(l[:i], lang, inside, rest)
+				return
+			}
+		} else if b == '"' {
+			if title, urlOrRefName, rest := isUrlOrRefName(l[i:]); title != nil {
+				if urlRef, ok := p.refs[string(urlOrRefName)]; ok {
+					p.serUrl(l[:i], title, urlRef.url, rest)
+				} else {
+					p.serUrl(l[:i], title, urlOrRefName, rest)
+				}
+				return
+			}
+		} else if b == '!' {
+			if imgSrc, alt, style, url, rest := isImg(l[i:]); imgSrc != nil {
+				p.serImg(l[:i], imgSrc, alt, style, url, rest)
+				return
+			}
+		}
+	}
+	p.serEscapedLine(l)
+}
+
+func (p *TextileParser) serLines(lines [][]byte) {
+	for i, l := range lines {
+		p.serLine(l)
+		if i != len(lines)-1 {
+			// TODO: in xhtml mode, output "<br />"
+			p.out.WriteString("<br>")
+			p.out.Write(newline)
+		}
+	}
 }
 
 func (p *TextileParser) serParagraph(lines [][]byte) {

@@ -272,6 +272,11 @@ func isSup(l []byte) ([]byte, []byte) {
 	return extractInside(l, '^', '^')
 }
 
+// ~$inside~$rest
+func isSub(l []byte) ([]byte, []byte) {
+	return extractInside(l, '~', '~')
+}
+
 func is2Byte(l []byte, b byte) ([]byte, []byte) {
 	if len(l) < 4 {
 		return nil, nil
@@ -656,6 +661,11 @@ func (p *TextileParser) serLine(l []byte) {
 		} else if b == '^' {
 			if inside, rest := isSup(l[i:]); inside != nil {
 				p.serTag(l[:i], inside, rest, "sup")
+				return
+			}
+		} else if b == '~' {
+			if inside, rest := isSub(l[i:]); inside != nil {
+				p.serTag(l[:i], inside, rest, "sub")
 				return
 			}
 		}

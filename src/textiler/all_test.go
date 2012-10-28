@@ -29,6 +29,24 @@ func TestTextileHtml(t *testing.T) {
 	}
 }
 
+func TestUrlRef(t *testing.T) {
+	data := []string{
+		"[hobix]http://hobix.com", "hobix", "http://hobix.com",
+		"[]http://hobix.com", "", "http://hobix.com",
+	}
+	for i := 0; i < len(data)/3; i++ {
+		title, url := isUrlRef([]byte(data[i*3]))
+		expectedTitle := data[i*3+1]
+		expectedUrl := data[i*3+2]
+		if !bytes.Equal(title, []byte(expectedTitle)) {
+			t.Fatalf("\nExpected[%s]\nActual  [%s]", expectedTitle, string(title))
+		}
+		if !bytes.Equal(url, []byte(expectedUrl)) {
+			t.Fatalf("\nExpected[%s]\nActual  [%s]", expectedUrl, string(url))
+		}
+	}
+}
+
 func TestIsSpan(t *testing.T) {
 	data := []string{
 		"%{color:red}%", "color:red", "", "",
@@ -83,9 +101,10 @@ func TestUrl(t *testing.T) {
 	data := []string{
 		`"Hobix":http://hobix.com/`, "Hobix", "http://hobix.com/", "",
 		`"":http://foo end`, "", "http://foo", " end",
+		`"foo":Bar tender`, "foo", "Bar", " tender",
 	}
 	for i := 0; i < len(data)/4; i++ {
-		title, url, rest := isUrl([]byte(data[i*4]))
+		title, url, rest := isUrlOrRefName([]byte(data[i*4]))
 		titleExpected := data[i*4+1]
 		urlExpected := data[i*4+2]
 		restExpected := data[i*4+3]

@@ -13,8 +13,8 @@ const (
 var newline = []byte{'\n'}
 
 type UrlRef struct {
-	link  []byte
-	title []byte
+	url  []byte
+	name []byte
 }
 
 type TextileRenderer struct {
@@ -102,6 +102,24 @@ func needsHtmlEscaping(b byte) []byte {
 func (p *TextileParser) serHtmlEscaped(d []byte) {
 	for _, b := range d {
 		if esc := needsHtmlEscaping(b); esc != nil {
+			p.out.Write(esc)
+		} else {
+			p.out.WriteByte(b)
+		}
+	}
+}
+
+func needsEscaping(b byte) []byte {
+	switch b {
+	case '\'':
+		return []byte("&#8217;")
+	}
+	return nil
+}
+
+func (p *TextileParser) serEscapedLine(l []byte) {
+	for _, b := range l {
+		if esc := needsEscaping(b); esc != nil {
 			p.out.Write(esc)
 		} else {
 			p.out.WriteByte(b)
@@ -205,6 +223,7 @@ func (p *TextileParser) serSpanWithLang(before []byte, lang []byte, inside []byt
 func (p *TextileParser) serUrl(before []byte, title []byte, url []byte, rest []byte) {
 	p.serEscapedLine(before)
 	p.out.WriteString(fmt.Sprintf(`<a href="%s">`, string(url)))
+	p.serEscapedLine(title)
 	p.out.Write(title)
 	p.out.WriteString("</a>")
 	p.serLine(rest)
@@ -331,24 +350,6 @@ func isBold(l []byte) ([]byte, []byte) {
 	return is2Byte(l, '*')
 }
 
-func needsEscaping(b byte) []byte {
-	switch b {
-	case '\'':
-		return []byte("&#8217;")
-	}
-	return nil
-}
-
-func (p *TextileParser) serEscapedLine(l []byte) {
-	for _, b := range l {
-		if esc := needsEscaping(b); esc != nil {
-			p.out.Write(esc)
-		} else {
-			p.out.WriteByte(b)
-		}
-	}
-}
-
 func (p *TextileParser) serLine(l []byte) {
 	for i := 0; i < len(l); i++ {
 		b := l[i]
@@ -380,8 +381,12 @@ func (p *TextileParser) serLine(l []byte) {
 				return
 			}
 		} else if b == '"' {
-			if title, url, rest := isUrl(l[i:]); title != nil {
-				p.serUrl(l[:i], title, url, rest)
+			if title, urlOrRefName, rest := isUrlOrRefName(l[i:]); title != nil {
+				if urlRef, ok := p.refs[string(urlOrRefName)]; ok {
+					p.serUrl(l[:i], title, urlRef.url, rest)
+				} else {
+					p.serUrl(l[:i], title, urlOrRefName, rest)
+				}
 				return
 			}
 		}
@@ -428,7 +433,6 @@ func isUrlEnd(b byte) bool {
 }
 
 func detectUrl(l []byte) ([]byte, []byte) {
-	//fmt.Printf("detectUrl: '%s'\n", string(l))
 	i := bytes.Index(l, []byte{':', '/', '/'})
 	if i == -1 {
 		//fmt.Printf("detectUrl: '%s', didn't find '://'\n", string(l))
@@ -436,13 +440,11 @@ func detectUrl(l []byte) ([]byte, []byte) {
 	}
 	s := string(l[:i])
 	if !(s == "http" || s == "https") {
-		//fmt.Printf("detectUrl: '%s', s='%s'\n", string(l), s)
 		return nil, nil
 	}
 	i += 3
 	for i < len(l) {
 		if isUrlEnd(l[i]) {
-			//fmt.Printf("detectUrl: '%s', url:'%s', rest:'%s'\n", string(l), string(l[:i]), string(l[i:]))
 			return l[:i], l[i:]
 		}
 		i += 1
@@ -450,8 +452,17 @@ func detectUrl(l []byte) ([]byte, []byte) {
 	return l, l[0:0]
 }
 
-// "$title":$url
-func isUrl(l []byte) ([]byte, []byte, []byte) {
+func extractUrlOrRefName(l []byte) ([]byte, []byte) {
+	for i, c := range l {
+		if isUrlEnd(c) {
+			return l[:i], l[i:]
+		}
+	}
+	return l, l[0:0]
+}
+
+// "$title":$url or "$title":$refName
+func isUrlOrRefName(l []byte) ([]byte, []byte, []byte) {
 	if len(l) < 4 {
 		return nil, nil, nil
 	}
@@ -468,12 +479,30 @@ func isUrl(l []byte) ([]byte, []byte, []byte) {
 	if len(l) < 1 || l[0] != ':' {
 		return nil, nil, nil
 	}
-	l = l[1:]
-	url, rest := detectUrl(l)
-	if url == nil {
-		return nil, nil, nil
-	}
+	url, rest := extractUrlOrRefName(l[1:])
 	return title, url, rest
+}
+
+// [$name]$url
+func isUrlRef(l []byte) ([]byte, []byte) {
+	if len(l) < 4 {
+		return nil, nil
+	}
+	if l[0] != '[' {
+		return nil, nil
+	}
+	l = l[1:]
+	endIdx := bytes.IndexByte(l, ']')
+	if endIdx == -1 {
+		return nil, nil
+	}
+	name := l[:endIdx]
+	l = l[endIdx+1:]
+	url, rest := detectUrl(l)
+	if url == nil || len(rest) > 0 {
+		return nil, nil
+	}
+	return name, url
 }
 
 func (p *TextileParser) serParagraph(lines [][]byte) {
@@ -566,7 +595,37 @@ func dumpParagraphs(paragraphs [][][]byte, out *bytes.Buffer) {
 	}
 }
 
+func (p *TextileParser) lineExtractRef(line []byte) bool {
+	if name, url := isUrlRef(line); name != nil {
+		p.refs[string(name)] = &UrlRef{name: name, url: url}
+		return true
+	}
+	return false
+}
+
+func (p *TextileParser) extractRefs(lines [][]byte) [][]byte {
+	res := make([][]byte, 0)
+	for _, l := range lines {
+		if !p.lineExtractRef(l) {
+			res = append(res, l)
+		}
+	}
+	return res
+}
+
+func (p *TextileParser) firstPass(paragraphs [][][]byte) [][][]byte {
+	res := make([][][]byte, 0)
+	for _, para := range paragraphs {
+		para = p.extractRefs(para)
+		if len(para) > 0 {
+			res = append(res, para)
+		}
+	}
+	return res
+}
+
 func (p *TextileParser) toHtml(d []byte) []byte {
+
 	lines := splitIntoLines(d)
 
 	if p.dumpLines {
@@ -584,6 +643,7 @@ func (p *TextileParser) toHtml(d []byte) []byte {
 		return nil
 	}
 
+	paragraphs = p.firstPass(paragraphs)
 	p.serParagraphs(paragraphs)
 	return p.out.Bytes()
 }

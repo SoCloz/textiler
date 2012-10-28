@@ -5,22 +5,45 @@ import (
 	"fmt"
 )
 
+const (
+	// renderer flags
+	RENDERER_XHTML = 1 << iota
+)
+
 var newline = []byte{'\n'}
 
+type UrlRef struct {
+	link  []byte
+	title []byte
+}
+
 type TextileRenderer struct {
-	isXhtml bool
-	out     bytes.Buffer
+	flags int
 }
 
 type TextileParser struct {
-	r     TextileRenderer
-	links map[string]string
+	r    TextileRenderer
+	refs map[string]*UrlRef
+
+	// TODO: this should be in TextileRenderer but for now it's ok
+	out bytes.Buffer
+
+	dumpLines      bool
+	dumpParagraphs bool
+}
+
+func (r *TextileRenderer) isFlagSet(flag int) bool {
+	return r.flags&flag != 0
+}
+
+func (r *TextileRenderer) isXhtml() bool {
+	return r.isFlagSet(RENDERER_XHTML)
 }
 
 func NewTextileParser(renderer TextileRenderer) *TextileParser {
 	return &TextileParser{
-		r:     renderer,
-		links: make(map[string]string),
+		r:    renderer,
+		refs: make(map[string]*UrlRef),
 	}
 }
 
@@ -76,21 +99,21 @@ func needsHtmlEscaping(b byte) []byte {
 	return nil
 }
 
-func serHtmlEscaped(d []byte, out *bytes.Buffer) {
+func (p *TextileParser) serHtmlEscaped(d []byte) {
 	for _, b := range d {
 		if esc := needsHtmlEscaping(b); esc != nil {
-			out.Write(esc)
+			p.out.Write(esc)
 		} else {
-			out.WriteByte(b)
+			p.out.WriteByte(b)
 		}
 	}
 }
 
-func serHtmlEscapedLines(lines [][]byte, out *bytes.Buffer) {
+func (p *TextileParser) serHtmlEscapedLines(lines [][]byte) {
 	for i, l := range lines {
-		serHtmlEscaped(l, out)
+		p.serHtmlEscaped(l)
 		if i != len(lines)-1 {
-			out.Write(newline)
+			p.out.Write(newline)
 		}
 	}
 }
@@ -111,80 +134,80 @@ func isHtmlParagraph(lines [][]byte) bool {
 	return bytes.Equal(tag, tag2)
 }
 
-func serTagStartWithOptClass(tag string, class []byte, out *bytes.Buffer) {
-	out.WriteByte('<')
-	out.WriteString(tag)
+func (p *TextileParser) serTagStartWithOptClass(tag string, class []byte) {
+	p.out.WriteByte('<')
+	p.out.WriteString(tag)
 	if class == nil {
-		out.WriteByte('>')
+		p.out.WriteByte('>')
 	} else {
-		out.WriteString(fmt.Sprintf(` class="%s">`, string(class)))
+		p.out.WriteString(fmt.Sprintf(` class="%s">`, string(class)))
 	}
 }
 
-func serTagStartWithOptStyle(tag string, style []byte, out *bytes.Buffer) {
-	out.WriteByte('<')
-	out.WriteString(tag)
+func (p *TextileParser) serTagStartWithOptStyle(tag string, style []byte) {
+	p.out.WriteByte('<')
+	p.out.WriteString(tag)
 	if style == nil {
-		out.WriteByte('>')
+		p.out.WriteByte('>')
 	} else {
-		out.WriteString(fmt.Sprintf(` style="%s;">`, string(style)))
+		p.out.WriteString(fmt.Sprintf(` style="%s;">`, string(style)))
 	}
 }
 
-func serTagEnd(tag string, out *bytes.Buffer) {
-	out.WriteString("</")
-	out.WriteString(tag)
-	out.WriteByte('>')
+func (p *TextileParser) serTagEnd(tag string) {
+	p.out.WriteString("</")
+	p.out.WriteString(tag)
+	p.out.WriteByte('>')
 }
 
-func serTag(before []byte, inside []byte, rest []byte, tag string, out *bytes.Buffer) {
-	out.Write(before) // TODO: escaped?
-	serTagStartWithOptClass(tag, nil, out)
-	serLine(inside, out)
-	serTagEnd(tag, out)
-	serLine(rest, out)
+func (p *TextileParser) serTag(before []byte, inside []byte, rest []byte, tag string) {
+	p.out.Write(before) // TODO: escaped?
+	p.serTagStartWithOptClass(tag, nil)
+	p.serLine(inside)
+	p.serTagEnd(tag)
+	p.serLine(rest)
 }
 
-func serTagWithClass(before []byte, inside []byte, class []byte, rest []byte, tag string, out *bytes.Buffer) {
-	out.Write(before) // TODO: escaped?
-	serTagStartWithOptClass(tag, class, out)
-	serLine(inside, out)
-	serTagEnd(tag, out)
-	serLine(rest, out)
+func (p *TextileParser) serTagWithClass(before []byte, inside []byte, class []byte, rest []byte, tag string) {
+	p.out.Write(before) // TODO: escaped?
+	p.serTagStartWithOptClass(tag, class)
+	p.serLine(inside)
+	p.serTagEnd(tag)
+	p.serLine(rest)
 }
 
-func serTagWithStyle(before []byte, inside []byte, style []byte, rest []byte, tag string, out *bytes.Buffer) {
-	out.Write(before) // TODO: escaped?
-	serTagStartWithOptStyle(tag, style, out)
-	serLine(inside, out)
-	serTagEnd(tag, out)
-	serLine(rest, out)
+func (p *TextileParser) serTagWithStyle(before []byte, inside []byte, style []byte, rest []byte, tag string) {
+	p.out.Write(before) // TODO: escaped?
+	p.serTagStartWithOptStyle(tag, style)
+	p.serLine(inside)
+	p.serTagEnd(tag)
+	p.serLine(rest)
 }
 
-func serSpanWithStyle(before []byte, style []byte, inside []byte, rest []byte, out *bytes.Buffer) {
-	serEscapedLine(before, out)
+func (p *TextileParser) serSpanWithStyle(before []byte, style []byte, inside []byte, rest []byte) {
+	p.serEscapedLine(before)
 
-	out.WriteString(fmt.Sprintf(`<span style="%s;">`, string(style)))
-	serLine(inside, out)
-	out.WriteString("</span>")
-	serLine(rest, out)
+	p.out.WriteString(fmt.Sprintf(`<span style="%s;">`, string(style)))
+	p.serLine(inside)
+	p.out.WriteString("</span>")
+	p.serLine(rest)
 }
 
-func serSpanWithLang(before []byte, lang []byte, inside []byte, rest []byte, out *bytes.Buffer) {
-	serEscapedLine(before, out)
+func (p *TextileParser) serSpanWithLang(before []byte, lang []byte, inside []byte, rest []byte) {
+	p.serEscapedLine(before)
 
-	out.WriteString(fmt.Sprintf(`<span lang="%s">`, string(lang)))
-	serLine(inside, out)
-	out.WriteString("</span>")
-	serLine(rest, out)
+	p.out.WriteString(fmt.Sprintf(`<span lang="%s">`, string(lang)))
+	p.serLine(inside)
+	p.out.WriteString("</span>")
+	p.serLine(rest)
 }
 
-func serUrl(before []byte, title []byte, url []byte, rest []byte, out *bytes.Buffer) {
-	serEscapedLine(before, out)
-	out.WriteString(fmt.Sprintf(`<a href="%s">`, string(url)))
-	out.Write(title)
-	out.WriteString("</a>")
-	serLine(rest, out)
+func (p *TextileParser) serUrl(before []byte, title []byte, url []byte, rest []byte) {
+	p.serEscapedLine(before)
+	p.out.WriteString(fmt.Sprintf(`<a href="%s">`, string(url)))
+	p.out.Write(title)
+	p.out.WriteString("</a>")
+	p.serLine(rest)
 }
 
 // %{$style}$inside%$rest
@@ -316,71 +339,71 @@ func needsEscaping(b byte) []byte {
 	return nil
 }
 
-func serEscapedLine(l []byte, out *bytes.Buffer) {
+func (p *TextileParser) serEscapedLine(l []byte) {
 	for _, b := range l {
 		if esc := needsEscaping(b); esc != nil {
-			out.Write(esc)
+			p.out.Write(esc)
 		} else {
-			out.WriteByte(b)
+			p.out.WriteByte(b)
 		}
 	}
 }
 
-func serLine(l []byte, out *bytes.Buffer) {
+func (p *TextileParser) serLine(l []byte) {
 	for i := 0; i < len(l); i++ {
 		b := l[i]
 		if b == '_' {
 			if inside, rest := isItalic(l[i:]); inside != nil {
-				serTag(l[:i], inside, rest, "i", out)
+				p.serTag(l[:i], inside, rest, "i")
 				return
 			}
 			if inside, class, rest := isEmWithClass(l[i:]); inside != nil {
-				serTagWithClass(l[:i], inside, class, rest, "em", out)
+				p.serTagWithClass(l[:i], inside, class, rest, "em")
 				return
 			}
 		} else if b == '*' {
 			if inside, rest := isBold(l[i:]); inside != nil {
-				serTag(l[:i], inside, rest, "b", out)
+				p.serTag(l[:i], inside, rest, "b")
 				return
 			}
 			if inside, style, rest := isStrongWithStyle(l[i:]); inside != nil {
-				serTagWithStyle(l[:i], inside, style, rest, "strong", out)
+				p.serTagWithStyle(l[:i], inside, style, rest, "strong")
 				return
 			}
 		} else if b == '%' {
 			if inside, style, rest := isSpanWithStyle(l[i:]); inside != nil {
-				serSpanWithStyle(l[:i], style, inside, rest, out)
+				p.serSpanWithStyle(l[:i], style, inside, rest)
 				return
 			}
 			if inside, lang, rest := isSpanWithLang(l[i:]); inside != nil {
-				serSpanWithLang(l[:i], lang, inside, rest, out)
+				p.serSpanWithLang(l[:i], lang, inside, rest)
 				return
 			}
 		} else if b == '"' {
 			if title, url, rest := isUrl(l[i:]); title != nil {
-				serUrl(l[:i], title, url, rest, out)
+				p.serUrl(l[:i], title, url, rest)
 				return
 			}
 		}
 	}
-	serEscapedLine(l, out)
+	p.serEscapedLine(l)
 }
 
-func serLines(lines [][]byte, out *bytes.Buffer) {
+func (p *TextileParser) serLines(lines [][]byte) {
 	for i, l := range lines {
-		serLine(l, out)
+		p.serLine(l)
 		if i != len(lines)-1 {
 			// TODO: in xhtml mode, output "<br />"
-			out.WriteString("<br>")
-			out.Write(newline)
+			p.out.WriteString("<br>")
+			p.out.Write(newline)
 		}
 	}
 }
 
-func serHLine(n int, rest []byte, out *bytes.Buffer) {
-	out.WriteString(fmt.Sprintf("\t<h%d>", n))
-	out.Write(rest) // TODO: escape?
-	out.WriteString(fmt.Sprintf("</h%d>", n))
+func (p *TextileParser) serHLine(n int, rest []byte) {
+	p.out.WriteString(fmt.Sprintf("\t<h%d>", n))
+	p.out.Write(rest) // TODO: escape?
+	p.out.WriteString(fmt.Sprintf("</h%d>", n))
 }
 
 // h$n. $rest
@@ -453,48 +476,48 @@ func isUrl(l []byte) ([]byte, []byte, []byte) {
 	return title, url, rest
 }
 
-func serParagraph(lines [][]byte, out *bytes.Buffer) {
+func (p *TextileParser) serParagraph(lines [][]byte) {
 	if len(lines) > 0 {
 		if n, rest := isHLine(lines[0]); n != -1 {
-			serHLine(n, rest, out)
+			p.serHLine(n, rest)
 			if len(lines) > 1 {
-				serParagraph(lines[1:], out)
+				p.serParagraph(lines[1:])
 			}
 			return
 		}
 	}
-	out.WriteString("\t<p>")
-	serLines(lines, out)
-	out.WriteString("</p>")
+	p.out.WriteString("\t<p>")
+	p.serLines(lines)
+	p.out.WriteString("</p>")
 }
 
-func serHtmlParagraph(lines [][]byte, out *bytes.Buffer) {
-	out.Write(lines[0])
+func (p *TextileParser) serHtmlParagraph(lines [][]byte) {
+	p.out.Write(lines[0])
 	if isHtmlParagraph(lines[1 : len(lines)-1]) {
-		out.Write(newline)
-		serHtmlParagraph(lines[1:len(lines)-1], out)
-		out.Write(newline)
+		p.out.Write(newline)
+		p.serHtmlParagraph(lines[1 : len(lines)-1])
+		p.out.Write(newline)
 	} else {
-		out.Write(newline)
+		p.out.Write(newline)
 		middleLines := lines[1 : len(lines)-1]
-		serHtmlEscapedLines(middleLines, out)
-		out.Write(newline)
+		p.serHtmlEscapedLines(middleLines)
+		p.out.Write(newline)
 	}
-	out.Write(lines[len(lines)-1])
+	p.out.Write(lines[len(lines)-1])
 }
 
-func serParagraphs(paragraphs [][][]byte, out *bytes.Buffer) {
+func (p *TextileParser) serParagraphs(paragraphs [][][]byte) {
 	for i, para := range paragraphs {
 		if i != 0 {
-			out.Write(newline)
+			p.out.Write(newline)
 		}
 		if isHtmlParagraph(para) {
-			serHtmlParagraph(para, out)
+			p.serHtmlParagraph(para)
 		} else {
-			serParagraph(para, out)
+			p.serParagraph(para)
 		}
 		if i != len(paragraphs)-1 {
-			out.Write(newline)
+			p.out.Write(newline)
 		}
 	}
 }
@@ -543,11 +566,10 @@ func dumpParagraphs(paragraphs [][][]byte, out *bytes.Buffer) {
 	}
 }
 
-func ToHtml(d []byte, flagDumpLines, flagDumpParagraphs bool) []byte {
-	var out bytes.Buffer
+func (p *TextileParser) toHtml(d []byte) []byte {
 	lines := splitIntoLines(d)
 
-	if flagDumpLines {
+	if p.dumpLines {
 		var buf bytes.Buffer
 		dumpLines(lines, &buf)
 		fmt.Printf("%s", string(buf.Bytes()))
@@ -555,17 +577,35 @@ func ToHtml(d []byte, flagDumpLines, flagDumpParagraphs bool) []byte {
 	}
 
 	paragraphs := groupIntoParagraphs(lines)
-	if flagDumpParagraphs {
+	if p.dumpParagraphs {
 		var buf bytes.Buffer
 		dumpParagraphs(paragraphs, &buf)
 		fmt.Printf("%s", string(buf.Bytes()))
 		return nil
 	}
 
-	serParagraphs(paragraphs, &out)
-	return out.Bytes()
+	p.serParagraphs(paragraphs)
+	return p.out.Bytes()
 }
 
-func ToXhtml(d []byte, flagDumpLines, flagDumpParagraphs bool) []byte {
-	return ToHtml(d, flagDumpLines, flagDumpParagraphs)
+func NewParserWithRenderer(isXhtml bool) *TextileParser {
+	r := TextileRenderer{}
+	if isXhtml {
+		r.flags = RENDERER_XHTML
+	}
+	return NewTextileParser(r)
+}
+
+func ToHtml(d []byte, dumpLines, dumpParagraphs bool) []byte {
+	p := NewParserWithRenderer(false)
+	p.dumpLines = dumpLines
+	p.dumpParagraphs = dumpParagraphs
+	return p.toHtml(d)
+}
+
+func ToXhtml(d []byte, dumpLines, dumpParagraphs bool) []byte {
+	p := NewParserWithRenderer(true)
+	p.dumpLines = dumpLines
+	p.dumpParagraphs = dumpParagraphs
+	return p.toHtml(d)
 }

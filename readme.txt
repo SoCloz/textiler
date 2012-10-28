@@ -1,1 +1,4 @@
-Textiler is a textile to html converter for Go.
+Textiler is a textile to html converter for Go language.
+
+License: BSD.
+

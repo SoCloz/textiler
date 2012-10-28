@@ -110,12 +110,13 @@ func TestSer(t *testing.T) {
 		"foo**bold**is here", "foo<b>bold</b>is here",
 	}
 	for i := 0; i < len(data)/2; i++ {
-		var buf bytes.Buffer
-		serLine([]byte(data[i*2]), &buf)
+		p := NewParserWithRenderer(false)
+		s := data[i*2]
+		p.serLine([]byte(s))
 		expected := []byte(data[i*2+1])
-		actual := buf.Bytes()
+		actual := p.out.Bytes()
 		if !bytes.Equal(expected, actual) {
-			t.Fatalf("\nExpected[%s]\nActual  [%s]", string(expected), string(actual))
+			t.Fatalf("\nTextile[%s]\nExpected[%s]\nActual  [%s]", s, string(expected), string(actual))
 		}
 	}
 }

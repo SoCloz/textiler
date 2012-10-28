@@ -173,7 +173,7 @@ func extractUntil(l []byte, c byte) ([]byte, []byte) {
 	return inside, rest
 }
 
-// ${start}${inside}${end}${rest}
+// $start$inside$end$rest
 // e.g. '@foo@bar'
 func extractInside(l []byte, start, end byte) ([]byte, []byte) {
 	if len(l) == 0 || l[0] != start {
@@ -252,9 +252,14 @@ func isEmWithOptClass(l []byte) ([]byte, []byte, []byte) {
 	return inside, class, rest
 }
 
-// @$code@$rest
+// @$inside@$rest
 func isCode(l []byte) ([]byte, []byte) {
 	return extractInside(l, '@', '@')
+}
+
+// -$inside-$rest
+func isDel(l []byte) ([]byte, []byte) {
+	return extractInside(l, '-', '-')
 }
 
 func is2Byte(l []byte, b byte) ([]byte, []byte) {
@@ -429,7 +434,7 @@ func needsEscaping(b byte) []byte {
 	return nil
 }
 
-func (p *TextileParser) serEscapedLine(l []byte) {
+func (p *TextileParser) serEscaped(l []byte) {
 	if isHtmlLine(l) {
 		p.out.Write(l)
 		return
@@ -480,7 +485,7 @@ func (p *TextileParser) serTagEnd(tag string) {
 }
 
 func (p *TextileParser) serTag(before, inside, rest []byte, tag string) {
-	p.out.Write(before) // TODO: escaped?
+	p.serEscaped(before)
 	p.serTagStartWithOptClass(tag, nil)
 	p.serLine(inside)
 	p.serTagEnd(tag)
@@ -504,7 +509,7 @@ func (p *TextileParser) serTagWithStyle(before, inside, style, rest []byte, tag 
 }
 
 func (p *TextileParser) serSpanWithStyle(before, style, inside, rest []byte) {
-	p.serEscapedLine(before)
+	p.serEscaped(before)
 	p.out.WriteString(fmt.Sprintf(`<span style="%s;">`, string(style)))
 	p.serLine(inside)
 	p.out.WriteString("</span>")
@@ -512,7 +517,7 @@ func (p *TextileParser) serSpanWithStyle(before, style, inside, rest []byte) {
 }
 
 func (p *TextileParser) serSpanWithLang(before, lang, inside, rest []byte) {
-	p.serEscapedLine(before)
+	p.serEscaped(before)
 	p.out.WriteString(fmt.Sprintf(`<span lang="%s">`, string(lang)))
 	p.serLine(inside)
 	p.out.WriteString("</span>")
@@ -520,21 +525,21 @@ func (p *TextileParser) serSpanWithLang(before, lang, inside, rest []byte) {
 }
 
 func (p *TextileParser) serUrl(before, title, url, rest []byte) {
-	p.serEscapedLine(before)
+	p.serEscaped(before)
 	p.out.WriteString(fmt.Sprintf(`<a href="%s">`, string(url)))
-	p.serEscapedLine(title)
+	p.serEscaped(title)
 	p.out.WriteString("</a>")
 	p.serLine(rest)
 }
 
 func (p *TextileParser) serCode(before, inside, rest []byte) {
-	p.serEscapedLine(before)
+	p.serEscaped(before)
 	p.out.WriteString(fmt.Sprintf(`<code>%s</code>`, string(inside)))
 	p.serLine(rest)
 }
 
 func (p *TextileParser) serImg(before []byte, imgSrc []byte, alt []byte, style int, url []byte, rest []byte) {
-	p.serEscapedLine(before)
+	p.serEscaped(before)
 	if len(url) > 0 {
 		p.out.WriteString(fmt.Sprintf(`<a href="%s" class="img">`, string(url)))
 	}
@@ -628,9 +633,14 @@ func (p *TextileParser) serLine(l []byte) {
 				p.serTag(l[:i], inside, rest, "cite")
 				return
 			}
+		} else if b == '-' {
+			if inside, rest := isDel(l[i:]); inside != nil {
+				p.serTag(l[:i], inside, rest, "del")
+				return
+			}
 		}
 	}
-	p.serEscapedLine(l)
+	p.serEscaped(l)
 }
 
 func (p *TextileParser) serLines(lines [][]byte) {

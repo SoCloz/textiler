@@ -228,11 +228,16 @@ func (p *TextileParser) serUrl(before, title, url, rest []byte) {
 
 func (p *TextileParser) serImg(before, url, alt, rest []byte) {
 	p.serEscapedLine(before)
-	p.out.WriteString(fmt.Sprintf(`<img src="%s" alt="%s">`, string(url), string(alt)))
+	if len(alt) > 0 {
+		p.out.WriteString(fmt.Sprintf(`<img src="%s" title="%s" alt="%s">`, string(url), string(alt), string(alt)))
+	} else {
+		p.out.WriteString(fmt.Sprintf(`<img src="%s" alt="">`, string(url)))
+	}
 	p.serLine(rest)
 }
 
-// !$imgUrl!
+// !$imgUrl($altOptional)!
+// TODO: should return nil for alt instead of empty slice if not found?
 func isImg(l []byte) ([]byte, []byte, []byte) {
 	if len(l) < 3 {
 		return nil, nil, nil
@@ -241,13 +246,30 @@ func isImg(l []byte) ([]byte, []byte, []byte) {
 		return nil, nil, nil
 	}
 	l = l[1:]
-	endIdx := bytes.IndexByte(l, '!')
-	if endIdx == -1 {
-		return nil, nil, nil
+	var url, rest, alt []byte
+	endIdx := bytes.IndexByte(l, '(')
+	if endIdx != -1 {
+		url = l[:endIdx]
+		l = l[endIdx+1:]
+		endIdx = bytes.IndexByte(l, ')')
+		if endIdx == -1 {
+			return nil, nil, nil
+		}
+		alt = l[:endIdx]
+		l = l[endIdx+1:]
+		if len(l) < 1 || l[0] != '!' {
+			return nil, nil, nil
+		}
+		rest = l[1:]
+	} else {
+		endIdx = bytes.IndexByte(l, '!')
+		if endIdx == -1 {
+			return nil, nil, nil
+		}
+		url = l[:endIdx]
+		rest = l[endIdx+1:]
+		alt = l[0:0]
 	}
-	url := l[:endIdx]
-	rest := l[endIdx+1:]
-	alt := l[0:0]
 	return url, alt, rest
 }
 

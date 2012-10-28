@@ -1,4 +1,5 @@
 Textiler is a textile to html converter for Go language.
 
-License: BSD.
+Written by Krzysztof Kowalczyk (http://blog.kowalczyk.info)
 
+License: BSD.

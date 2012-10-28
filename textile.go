@@ -187,19 +187,14 @@ func extractInside(l []byte, start, end byte) ([]byte, []byte) {
 }
 
 // %{$style}$inside%$rest
-func isSpanWithStyle(l []byte) ([]byte, []byte, []byte) {
-	if len(l) < 4 {
+func isSpanWithOptStyle(l []byte) ([]byte, []byte, []byte) {
+	if len(l) < 3 {
 		return nil, nil, nil
 	}
-	if l[0] != '%' && l[1] != '{' {
+	if l[0] != '%' {
 		return nil, nil, nil
 	}
-	l = l[1:]
-	style, l := extractInside(l, '{', '}')
-	// TODO: make style optional and remote this check?
-	if style == nil {
-		return nil, nil, nil
-	}
+	style, l := extractInside(l[1:], '{', '}')
 	inside, rest := extractUntil(l, '%')
 	return inside, style, rest
 }
@@ -515,19 +510,11 @@ func (p *TextileParser) serTagWithOptClass(before, inside, class, rest []byte, t
 	p.serLine(rest)
 }
 
-func (p *TextileParser) serTagWithStyle(before, inside, style, rest []byte, tag string) {
-	p.out.Write(before) // TODO: escaped?
+func (p *TextileParser) serTagWithOptStyle(before, inside, style, rest []byte, tag string) {
+	p.serEscaped(before) // TODO: escaped?
 	p.serTagStartWithOptStyle(tag, style)
 	p.serLine(inside)
 	p.serTagEnd(tag)
-	p.serLine(rest)
-}
-
-func (p *TextileParser) serSpanWithStyle(before, style, inside, rest []byte) {
-	p.serEscaped(before)
-	p.out.WriteString(fmt.Sprintf(`<span style="%s;">`, string(style)))
-	p.serLine(inside)
-	p.out.WriteString("</span>")
 	p.serLine(rest)
 }
 
@@ -612,16 +599,16 @@ func (p *TextileParser) serLine(l []byte) {
 				return
 			}
 			if inside, style, rest := isStrongWithOptStyle(l[i:]); inside != nil {
-				p.serTagWithStyle(l[:i], inside, style, rest, "strong")
+				p.serTagWithOptStyle(l[:i], inside, style, rest, "strong")
 				return
 			}
 		} else if b == '%' {
-			if inside, style, rest := isSpanWithStyle(l[i:]); inside != nil {
-				p.serSpanWithStyle(l[:i], style, inside, rest)
-				return
-			}
 			if inside, lang, rest := isSpanWithLang(l[i:]); inside != nil {
 				p.serSpanWithLang(l[:i], lang, inside, rest)
+				return
+			}
+			if inside, style, rest := isSpanWithOptStyle(l[i:]); inside != nil {
+				p.serTagWithOptStyle(l[:i], inside, style, rest, "span")
 				return
 			}
 		} else if b == '"' {

@@ -171,7 +171,9 @@ func TestTextileHtml(t *testing.T) {
 func TestTextileXhtml(t *testing.T) {
 	// TODO: for now mark tests that we expect to pass explicitly
 	// 4,5,6,7,8,9,10 - smartypants for '"'
-	passingTests := []int{0, 1, 2, 3, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}
+	passingTests := []int{0, 1, 2, 3, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+		21, 22, 23, 24, 25}
+	//fmt.Printf("%d xhtml tests\n", len(XhtmlTests) / 2)
 	for _, i := range passingTests {
 		s := XhtmlTests[i*2]
 		actual := textileToXhtml(s)

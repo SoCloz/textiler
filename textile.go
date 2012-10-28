@@ -262,6 +262,11 @@ func isDel(l []byte) ([]byte, []byte) {
 	return extractInside(l, '-', '-')
 }
 
+// +$inside+$rest
+func isIns(l []byte) ([]byte, []byte) {
+	return extractInside(l, '+', '+')
+}
+
 func is2Byte(l []byte, b byte) ([]byte, []byte) {
 	if len(l) < 4 {
 		return nil, nil
@@ -636,6 +641,11 @@ func (p *TextileParser) serLine(l []byte) {
 		} else if b == '-' {
 			if inside, rest := isDel(l[i:]); inside != nil {
 				p.serTag(l[:i], inside, rest, "del")
+				return
+			}
+		} else if b == '+' {
+			if inside, rest := isIns(l[i:]); inside != nil {
+				p.serTag(l[:i], inside, rest, "ins")
 				return
 			}
 		}

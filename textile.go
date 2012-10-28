@@ -221,20 +221,15 @@ func isSpanWithLang(l []byte) ([]byte, []byte, []byte) {
 	return inside, lang, rest
 }
 
-// *{$style}$inside*$rest
-func isStrongWithStyle(l []byte) ([]byte, []byte, []byte) {
-	if len(l) < 4 {
+// *{$styleOpt}$inside*$rest
+func isStrongWithOptStyle(l []byte) ([]byte, []byte, []byte) {
+	if len(l) < 3 {
 		return nil, nil, nil
 	}
-	if l[0] != '*' || l[1] != '{' {
+	if l[0] != '*' {
 		return nil, nil, nil
 	}
-	l = l[1:]
-	style, l := extractInside(l, '{', '}')
-	// TODO: make style optional and remote this check?
-	if style == nil {
-		return nil, nil, nil
-	}
+	style, l := extractInside(l[1:], '{', '}')
 	inside, rest := extractUntil(l, '*')
 	return inside, style, rest
 }
@@ -592,7 +587,7 @@ func (p *TextileParser) serLine(l []byte) {
 				p.serTag(l[:i], inside, rest, "b")
 				return
 			}
-			if inside, style, rest := isStrongWithStyle(l[i:]); inside != nil {
+			if inside, style, rest := isStrongWithOptStyle(l[i:]); inside != nil {
 				p.serTagWithStyle(l[:i], inside, style, rest, "strong")
 				return
 			}

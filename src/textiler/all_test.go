@@ -16,19 +16,6 @@ func textileToXhtml(input string) string {
 	return string(ToXhtml([]byte(input), false, false))
 }
 
-func TestTextileHtml(t *testing.T) {
-	// TODO: for now mark tests that we expect to pass explicitly
-	passingTests := []int{0}
-	for _, i := range passingTests {
-		s := HtmlTests[i*2]
-		actual := textileToHtml(s)
-		expected := HtmlTests[i*2+1]
-		if actual != expected {
-			t.Errorf("\nExpected[%#v]\nActual  [%#v]", expected, actual)
-		}
-	}
-}
-
 func TestUrlRef(t *testing.T) {
 	data := []string{
 		"[hobix]http://hobix.com", "hobix", "http://hobix.com",
@@ -163,15 +150,30 @@ func TestItalic(t *testing.T) {
 	}
 }
 
+func TestTextileHtml(t *testing.T) {
+	// TODO: for now mark tests that we expect to pass explicitly
+	lastPassingTest := 11
+	for i := 0; i <= lastPassingTest; i++ {
+		s := HtmlTests[i*2]
+		actual := textileToHtml(s)
+		expected := HtmlTests[i*2+1]
+		if actual != expected {
+			ToHtml([]byte(s), false, true)
+			t.Fatalf("\nSrc:'%s'\n\nExp:'%#v'\n\nGot:'%#v'\n", s, expected, actual)
+		}
+	}
+}
+
 func TestTextileXhtml(t *testing.T) {
 	// TODO: for now mark tests that we expect to pass explicitly
-	passingTests := []int{0}
-	for _, i := range passingTests {
+	lastPassingTest := 2
+	for i := 0; i <= lastPassingTest; i++ {
 		s := XhtmlTests[i*2]
 		actual := textileToXhtml(s)
 		expected := XhtmlTests[i*2+1]
 		if actual != expected {
-			t.Fatalf("\nExpected[%#v]\nActual  [%#v]", expected, actual)
+			ToXhtml([]byte(s), false, true)
+			t.Fatalf("\nSrc:'%s'\n\nExp:'%#v'\n\nGot:'%#v'\n", s, expected, actual)
 		}
 	}
 }

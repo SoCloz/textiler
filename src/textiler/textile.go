@@ -226,51 +226,60 @@ func (p *TextileParser) serUrl(before, title, url, rest []byte) {
 	p.serLine(rest)
 }
 
-func (p *TextileParser) serImg(before, url, alt, rest []byte) {
+func (p *TextileParser) serImg(before, imgSrc, alt, url, rest []byte) {
 	p.serEscapedLine(before)
+	if len(url) > 0 {
+		p.out.WriteString(fmt.Sprintf(`<a href="%s" class="img">`, string(url)))
+	}
 	if len(alt) > 0 {
-		p.out.WriteString(fmt.Sprintf(`<img src="%s" title="%s" alt="%s">`, string(url), string(alt), string(alt)))
+		p.out.WriteString(fmt.Sprintf(`<img src="%s" title="%s" alt="%s">`, string(imgSrc), string(alt), string(alt)))
 	} else {
-		p.out.WriteString(fmt.Sprintf(`<img src="%s" alt="">`, string(url)))
+		p.out.WriteString(fmt.Sprintf(`<img src="%s" alt="">`, string(imgSrc)))
+	}
+	if len(url) > 0 {
+		p.out.WriteString("</a>")
 	}
 	p.serLine(rest)
 }
 
-// !$imgUrl($altOptional)!
+// !$imgSrc($altOptional)!:$urlOptional
 // TODO: should return nil for alt instead of empty slice if not found?
-func isImg(l []byte) ([]byte, []byte, []byte) {
+func isImg(l []byte) ([]byte, []byte, []byte, []byte) {
 	if len(l) < 3 {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	if l[0] != '!' {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	l = l[1:]
-	var url, rest, alt []byte
+	var imgSrc, alt, url []byte
 	endIdx := bytes.IndexByte(l, '(')
 	if endIdx != -1 {
-		url = l[:endIdx]
+		imgSrc = l[:endIdx]
 		l = l[endIdx+1:]
 		endIdx = bytes.IndexByte(l, ')')
 		if endIdx == -1 {
-			return nil, nil, nil
+			return nil, nil, nil, nil
 		}
 		alt = l[:endIdx]
 		l = l[endIdx+1:]
 		if len(l) < 1 || l[0] != '!' {
-			return nil, nil, nil
+			return nil, nil, nil, nil
 		}
-		rest = l[1:]
+		l = l[1:]
 	} else {
 		endIdx = bytes.IndexByte(l, '!')
 		if endIdx == -1 {
-			return nil, nil, nil
+			return nil, nil, nil, nil
 		}
-		url = l[:endIdx]
-		rest = l[endIdx+1:]
+		imgSrc = l[:endIdx]
+		l = l[endIdx+1:]
 		alt = l[0:0]
 	}
-	return url, alt, rest
+	if len(l) > 0 && l[0] == ':' {
+		url, l = extractUrlOrRefName(l[1:])
+	}
+	return imgSrc, alt, url, l
 }
 
 // %{$style}$inside%$rest
@@ -434,8 +443,8 @@ func (p *TextileParser) serLine(l []byte) {
 				return
 			}
 		} else if b == '!' {
-			if url, alt, rest := isImg(l[i:]); url != nil {
-				p.serImg(l[:i], url, alt, rest)
+			if imgSrc, alt, url, rest := isImg(l[i:]); imgSrc != nil {
+				p.serImg(l[:i], imgSrc, alt, url, rest)
 				return
 			}
 		}

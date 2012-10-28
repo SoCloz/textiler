@@ -130,6 +130,7 @@ func TestSerLine(t *testing.T) {
 		`"Hobix":http://hobix.com/`, `<a href="http://hobix.com/">Hobix</a>`,
 		`!http://hobix.com/sample.jpg!`, `<img src="http://hobix.com/sample.jpg" alt="">`,
 		`!openwindow1.gif(Bunny.)!`, `<img src="openwindow1.gif" title="Bunny." alt="Bunny.">`,
+		`!openwindow1.gif!:http://hobix.com/`, `<a href="http://hobix.com/" class="img"><img src="openwindow1.gif" alt=""></a>`,
 	}
 	for i := 0; i < len(data)/2; i++ {
 		p := NewParserWithRenderer(false)

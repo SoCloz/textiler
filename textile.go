@@ -163,6 +163,29 @@ func isImg(l []byte) ([]byte, []byte, int, []byte, []byte) {
 	return imgSrc, alt, style, url, l
 }
 
+func extractUntil(l []byte, c byte) ([]byte, []byte) {
+	idx := bytes.IndexByte(l, c)
+	if idx == -1 {
+		return nil, l
+	}
+	inside := l[:idx]
+	rest := l[idx+1:]
+	return inside, rest
+}
+
+// ${start}${inside}${end}${rest}
+// e.g. '@foo@bar'
+func extractInside(l []byte, start, end byte) ([]byte, []byte) {
+	if len(l) == 0 || l[0] != start {
+		return nil, l
+	}
+	inside, rest := extractUntil(l[1:], end)
+	if inside == nil {
+		return nil, l
+	}
+	return inside, rest
+}
+
 // %{$style}$inside%$rest
 func isSpanWithStyle(l []byte) ([]byte, []byte, []byte) {
 	if len(l) < 4 {
@@ -171,19 +194,13 @@ func isSpanWithStyle(l []byte) ([]byte, []byte, []byte) {
 	if l[0] != '%' && l[1] != '{' {
 		return nil, nil, nil
 	}
-	l = l[2:]
-	endIdx := bytes.IndexByte(l, '}')
-	if endIdx == -1 {
+	l = l[1:]
+	style, l := extractInside(l, '{', '}')
+	// TODO: make style optional and remote this check?
+	if style == nil {
 		return nil, nil, nil
 	}
-	style := l[:endIdx]
-	l = l[endIdx+1:]
-	endIdx = bytes.IndexByte(l, '%')
-	if endIdx == -1 {
-		return nil, nil, nil
-	}
-	inside := l[:endIdx]
-	rest := l[endIdx+1:]
+	inside, rest := extractUntil(l, '%')
 	return inside, style, rest
 }
 
@@ -195,19 +212,12 @@ func isSpanWithLang(l []byte) ([]byte, []byte, []byte) {
 	if l[0] != '%' && l[1] != '[' {
 		return nil, nil, nil
 	}
-	l = l[2:]
-	endIdx := bytes.IndexByte(l, ']')
-	if endIdx == -1 {
+	l = l[1:]
+	lang, l := extractInside(l, '[', ']')
+	if lang == nil {
 		return nil, nil, nil
 	}
-	lang := l[:endIdx]
-	l = l[endIdx+1:]
-	endIdx = bytes.IndexByte(l, '%')
-	if endIdx == -1 {
-		return nil, nil, nil
-	}
-	inside := l[:endIdx]
-	rest := l[endIdx+1:]
+	inside, rest := extractUntil(l, '%')
 	return inside, lang, rest
 }
 
@@ -219,60 +229,37 @@ func isStrongWithStyle(l []byte) ([]byte, []byte, []byte) {
 	if l[0] != '*' || l[1] != '{' {
 		return nil, nil, nil
 	}
-	l = l[2:]
-	endIdx := bytes.IndexByte(l, '}')
-	if endIdx == -1 {
+	l = l[1:]
+	style, l := extractInside(l, '{', '}')
+	// TODO: make style optional and remote this check?
+	if style == nil {
 		return nil, nil, nil
 	}
-	style := l[:endIdx]
-	l = l[endIdx+1:]
-	endIdx = bytes.IndexByte(l, '*')
-	if endIdx == -1 {
-		return nil, nil, nil
-	}
-	inside := l[:endIdx]
-	rest := l[endIdx+1:]
+	inside, rest := extractUntil(l, '*')
 	return inside, style, rest
 }
 
-// _($class)$inside_$rest
-func isEmWithClass(l []byte) ([]byte, []byte, []byte) {
-	if len(l) < 4 {
+// _($classOpt)$inside_$rest
+func isEmWithOptClass(l []byte) ([]byte, []byte, []byte) {
+	if len(l) < 2 {
 		return nil, nil, nil
 	}
-	if l[0] != '_' || l[1] != '(' {
+	if l[0] != '_' {
 		return nil, nil, nil
 	}
-	l = l[2:]
-	endIdx := bytes.IndexByte(l, ')')
-	if endIdx == -1 {
+	class, l := extractInside(l[1:], '(', ')')
+	idx := bytes.IndexByte(l, '_')
+	if idx == -1 {
 		return nil, nil, nil
 	}
-	class := l[:endIdx]
-	l = l[endIdx+1:]
-	endIdx = bytes.IndexByte(l, '_')
-	if endIdx == -1 {
-		return nil, nil, nil
-	}
-	inside := l[:endIdx]
-	rest := l[endIdx+1:]
+	inside := l[:idx]
+	rest := l[idx+1:]
 	return inside, class, rest
 }
 
 // @$code@$rest
 func isCode(l []byte) ([]byte, []byte) {
-	if len(l) < 2 {
-		return nil, nil
-	}
-	if l[0] != '@' {
-		return nil, nil
-	}
-	l = l[1:]
-	endIdx := bytes.IndexByte(l, '@')
-	if endIdx == -1 {
-		return nil, nil
-	}
-	return l[:endIdx], l[endIdx+1:]
+	return extractInside(l, '@', '@')
 }
 
 func is2Byte(l []byte, b byte) ([]byte, []byte) {
@@ -358,17 +345,8 @@ func isUrlOrRefName(l []byte) ([]byte, []byte, []byte) {
 	if len(l) < 4 {
 		return nil, nil, nil
 	}
-	if l[0] != '"' {
-		return nil, nil, nil
-	}
-	l = l[1:]
-	endIdx := bytes.IndexByte(l, '"')
-	if endIdx == -1 {
-		return nil, nil, nil
-	}
-	title := l[:endIdx]
-	l = l[endIdx+1:]
-	if len(l) < 1 || l[0] != ':' {
+	title, l := extractInside(l, '"', '"')
+	if title == nil || len(l) < 1 || l[0] != ':' {
 		return nil, nil, nil
 	}
 	urlOrRefName, rest := extractUrlOrRefName(l[1:])
@@ -510,7 +488,7 @@ func (p *TextileParser) serTag(before, inside, rest []byte, tag string) {
 	p.serLine(rest)
 }
 
-func (p *TextileParser) serTagWithClass(before, inside, class, rest []byte, tag string) {
+func (p *TextileParser) serTagWithOptClass(before, inside, class, rest []byte, tag string) {
 	p.out.Write(before) // TODO: escaped?
 	p.serTagStartWithOptClass(tag, class)
 	p.serLine(inside)
@@ -605,8 +583,8 @@ func (p *TextileParser) serLine(l []byte) {
 				p.serTag(l[:i], inside, rest, "i")
 				return
 			}
-			if inside, class, rest := isEmWithClass(l[i:]); inside != nil {
-				p.serTagWithClass(l[:i], inside, class, rest, "em")
+			if inside, class, rest := isEmWithOptClass(l[i:]); inside != nil {
+				p.serTagWithOptClass(l[:i], inside, class, rest, "em")
 				return
 			}
 		} else if b == '*' {

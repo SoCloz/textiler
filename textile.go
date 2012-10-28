@@ -284,6 +284,10 @@ func isBold(l []byte) ([]byte, []byte) {
 	return is2Byte(l, '*')
 }
 
+func isCite(l []byte) ([]byte, []byte) {
+	return is2Byte(l, '?')
+}
+
 // h$n. $rest
 func isHLine(l []byte) (int, []byte) {
 	if len(l) < 4 {
@@ -617,6 +621,11 @@ func (p *TextileParser) serLine(l []byte) {
 		} else if b == '@' {
 			if inside, rest := isCode(l[i:]); inside != nil {
 				p.serCode(l[:i], inside, rest)
+				return
+			}
+		} else if b == '?' {
+			if inside, rest := isCite(l[i:]); inside != nil {
+				p.serTag(l[:i], inside, rest, "cite")
 				return
 			}
 		}

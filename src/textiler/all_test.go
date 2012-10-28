@@ -120,13 +120,15 @@ func TestUrl(t *testing.T) {
 	}
 }
 
-func TestSer(t *testing.T) {
+func TestSerLine(t *testing.T) {
 	data := []string{
 		"__f__", "<i>f</i>",
 		"____", "<i></i>",
 		"____rest", "<i></i>rest",
 		"before__ol__", "before<i>ol</i>",
 		"foo**bold**is here", "foo<b>bold</b>is here",
+		`"Hobix":http://hobix.com/`, `<a href="http://hobix.com/">Hobix</a>`,
+		`!http://hobix.com/sample.jpg!`, `<img src="http://hobix.com/sample.jpg" alt="">`,
 	}
 	for i := 0; i < len(data)/2; i++ {
 		p := NewParserWithRenderer(false)
@@ -135,7 +137,7 @@ func TestSer(t *testing.T) {
 		expected := []byte(data[i*2+1])
 		actual := p.out.Bytes()
 		if !bytes.Equal(expected, actual) {
-			t.Fatalf("\nTextile[%s]\nExpected[%s]\nActual  [%s]", s, string(expected), string(actual))
+			t.Fatalf("\nTextile [%s]\nExpected[%s]\nActual  [%s]", s, string(expected), string(actual))
 		}
 	}
 }

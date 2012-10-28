@@ -178,7 +178,7 @@ func (p *TextileParser) serTagEnd(tag string) {
 	p.out.WriteByte('>')
 }
 
-func (p *TextileParser) serTag(before []byte, inside []byte, rest []byte, tag string) {
+func (p *TextileParser) serTag(before, inside, rest []byte, tag string) {
 	p.out.Write(before) // TODO: escaped?
 	p.serTagStartWithOptClass(tag, nil)
 	p.serLine(inside)
@@ -186,7 +186,7 @@ func (p *TextileParser) serTag(before []byte, inside []byte, rest []byte, tag st
 	p.serLine(rest)
 }
 
-func (p *TextileParser) serTagWithClass(before []byte, inside []byte, class []byte, rest []byte, tag string) {
+func (p *TextileParser) serTagWithClass(before, inside, class, rest []byte, tag string) {
 	p.out.Write(before) // TODO: escaped?
 	p.serTagStartWithOptClass(tag, class)
 	p.serLine(inside)
@@ -194,7 +194,7 @@ func (p *TextileParser) serTagWithClass(before []byte, inside []byte, class []by
 	p.serLine(rest)
 }
 
-func (p *TextileParser) serTagWithStyle(before []byte, inside []byte, style []byte, rest []byte, tag string) {
+func (p *TextileParser) serTagWithStyle(before, inside, style, rest []byte, tag string) {
 	p.out.Write(before) // TODO: escaped?
 	p.serTagStartWithOptStyle(tag, style)
 	p.serLine(inside)
@@ -202,31 +202,53 @@ func (p *TextileParser) serTagWithStyle(before []byte, inside []byte, style []by
 	p.serLine(rest)
 }
 
-func (p *TextileParser) serSpanWithStyle(before []byte, style []byte, inside []byte, rest []byte) {
+func (p *TextileParser) serSpanWithStyle(before, style, inside, rest []byte) {
 	p.serEscapedLine(before)
-
 	p.out.WriteString(fmt.Sprintf(`<span style="%s;">`, string(style)))
 	p.serLine(inside)
 	p.out.WriteString("</span>")
 	p.serLine(rest)
 }
 
-func (p *TextileParser) serSpanWithLang(before []byte, lang []byte, inside []byte, rest []byte) {
+func (p *TextileParser) serSpanWithLang(before, lang, inside, rest []byte) {
 	p.serEscapedLine(before)
-
 	p.out.WriteString(fmt.Sprintf(`<span lang="%s">`, string(lang)))
 	p.serLine(inside)
 	p.out.WriteString("</span>")
 	p.serLine(rest)
 }
 
-func (p *TextileParser) serUrl(before []byte, title []byte, url []byte, rest []byte) {
+func (p *TextileParser) serUrl(before, title, url, rest []byte) {
 	p.serEscapedLine(before)
 	p.out.WriteString(fmt.Sprintf(`<a href="%s">`, string(url)))
 	p.serEscapedLine(title)
-	p.out.Write(title)
 	p.out.WriteString("</a>")
 	p.serLine(rest)
+}
+
+func (p *TextileParser) serImg(before, url, alt, rest []byte) {
+	p.serEscapedLine(before)
+	p.out.WriteString(fmt.Sprintf(`<img src="%s" alt="%s">`, string(url), string(alt)))
+	p.serLine(rest)
+}
+
+// !$imgUrl!
+func isImg(l []byte) ([]byte, []byte, []byte) {
+	if len(l) < 3 {
+		return nil, nil, nil
+	}
+	if l[0] != '!' {
+		return nil, nil, nil
+	}
+	l = l[1:]
+	endIdx := bytes.IndexByte(l, '!')
+	if endIdx == -1 {
+		return nil, nil, nil
+	}
+	url := l[:endIdx]
+	rest := l[endIdx+1:]
+	alt := l[0:0]
+	return url, alt, rest
 }
 
 // %{$style}$inside%$rest
@@ -389,6 +411,11 @@ func (p *TextileParser) serLine(l []byte) {
 				}
 				return
 			}
+		} else if b == '!' {
+			if url, alt, rest := isImg(l[i:]); url != nil {
+				p.serImg(l[:i], url, alt, rest)
+				return
+			}
 		}
 	}
 	p.serEscapedLine(l)
@@ -428,14 +455,13 @@ func isHLine(l []byte) (int, []byte) {
 
 // TODO: this is more complex
 func isUrlEnd(b byte) bool {
-	i := bytes.IndexByte([]byte{' '}, b)
+	i := bytes.IndexByte([]byte{' ', '!'}, b)
 	return i != -1
 }
 
 func detectUrl(l []byte) ([]byte, []byte) {
 	i := bytes.Index(l, []byte{':', '/', '/'})
 	if i == -1 {
-		//fmt.Printf("detectUrl: '%s', didn't find '://'\n", string(l))
 		return nil, nil
 	}
 	s := string(l[:i])
@@ -454,6 +480,8 @@ func detectUrl(l []byte) ([]byte, []byte) {
 
 func extractUrlOrRefName(l []byte) ([]byte, []byte) {
 	for i, c := range l {
+		// TODO: hackish. Probably should test l[:i] against a list
+		// of known refs
 		if isUrlEnd(c) {
 			return l[:i], l[i:]
 		}
@@ -479,8 +507,8 @@ func isUrlOrRefName(l []byte) ([]byte, []byte, []byte) {
 	if len(l) < 1 || l[0] != ':' {
 		return nil, nil, nil
 	}
-	url, rest := extractUrlOrRefName(l[1:])
-	return title, url, rest
+	urlOrRefName, rest := extractUrlOrRefName(l[1:])
+	return title, urlOrRefName, rest
 }
 
 // [$name]$url

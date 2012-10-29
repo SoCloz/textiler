@@ -87,9 +87,34 @@ func extractEndTag(line []byte) ([]byte, bool) {
 	return nil, false
 }
 
+const (
+	cr = 0xd
+	lf = 0xa
+)
+
 func splitIntoLines(d []byte) [][]byte {
-	// TODO: should handle CR, LF, CRLF
-	return bytes.Split(d, []byte{'\n'})
+	res := make([][]byte, 0)
+	for len(d) > 0 {
+		wasCr := false
+		pos := -1
+		for i := 0; i < len(d); i++ {
+			if d[i] == cr || d[i] == lf {
+				wasCr = (d[i] == cr)
+				pos = i
+				break
+			}
+		}
+		if pos == -1 {
+			res = append(res, d)
+			return res
+		}
+		res = append(res, d[:pos])
+		d = d[pos+1:]
+		if wasCr && len(d) > 0 && d[0] == lf {
+			d = d[1:]
+		}
+	}
+	return res
 }
 
 func isHtmlLine(l []byte) bool {

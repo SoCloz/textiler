@@ -92,28 +92,43 @@ const (
 	lf = 0xa
 )
 
-func splitIntoLines(d []byte) [][]byte {
-	res := make([][]byte, 0)
-	for len(d) > 0 {
-		wasCr := false
-		pos := -1
-		for i := 0; i < len(d); i++ {
-			if d[i] == cr || d[i] == lf {
-				wasCr = (d[i] == cr)
-				pos = i
-				break
-			}
-		}
-		if pos == -1 {
-			res = append(res, d)
-			return res
-		}
-		res = append(res, d[:pos])
-		d = d[pos+1:]
-		if wasCr && len(d) > 0 && d[0] == lf {
-			d = d[1:]
+// find a end of line (cr, lf or crlf). Return the line
+// and the remaining of data (without the end-of-line character(s))
+func ExtractLine(d []byte) ([]byte, []byte) {
+	if d == nil || len(d) == 0 {
+		return nil, nil
+	}
+	wasCr := false
+	pos := -1
+	for i := 0; i < len(d); i++ {
+		if d[i] == cr || d[i] == lf {
+			wasCr = (d[i] == cr)
+			pos = i
+			break
 		}
 	}
+	if pos == -1 {
+		return d, nil
+	}
+	line := d[:pos]
+	rest := d[pos+1:]
+	if wasCr && len(rest) > 0 && rest[0] == lf {
+		rest = rest[1:]
+	}
+	return line, rest
+}
+
+func splitIntoLines(d []byte) [][]byte {
+	res := make([][]byte, 0)
+	var l []byte
+	for {
+		l, d = ExtractLine(d)
+		if l == nil {
+			return res
+		}
+		res = append(res, l)
+	}
+	panic("")
 	return res
 }
 

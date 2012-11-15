@@ -301,21 +301,45 @@ func extractClassOpt(l []byte) (rest []byte, classOpt []byte) {
 	return l, nil
 }
 
+// TODO: it's possible this list is not complete
+func isStyleChar(c byte) bool {
+	return isChar(c) || isDigit(c) ||
+		(-1 != bytes.IndexByte([]byte{'#', '-', ':', ';'}, c))
+}
+
+// {$style}$rest
+func extractStyleOpt(l []byte) (rest []byte, styleOpt []byte) {
+	if len(l) < 3 {
+		return l, nil
+	}
+	if l[0] != '{' {
+		return l, nil
+	}
+	for i := 1; i < len(l); i++ {
+		if !isStyleChar(l[i]) {
+			if l[i] == '}' {
+				return l[i+1:], l[1:i]
+			}
+		}
+	}
+	return l, nil
+}
+
 // _($classOpt)$inside_$rest
-func isEmWithOptClass(l []byte) ([]byte, []byte, []byte) {
+func isEmWithOptClass(l []byte) (inside []byte, classOpt []byte, rest []byte) {
 	if len(l) < 2 {
 		return nil, nil, nil
 	}
 	if l[0] != '_' {
 		return nil, nil, nil
 	}
-	l, classOpt := extractClassOpt(l[1:])
+	l, classOpt = extractClassOpt(l[1:])
 	idx := bytes.IndexByte(l, '_')
 	if idx == -1 {
 		return nil, nil, nil
 	}
-	inside := l[:idx]
-	rest := l[idx+1:]
+	inside = l[:idx]
+	rest = l[idx+1:]
 	return inside, classOpt, rest
 }
 
@@ -478,19 +502,22 @@ func isBlockQuote(l []byte) []byte {
 	return startsWith(l, []byte("bq. "))
 }
 
-// p($classOpt). $rest
-func isP(l []byte) (rest []byte, classOpt []byte) {
+// p($classOpt){$styleOpt}. $rest
+func isP(l []byte) (rest []byte, classOpt []byte, styleOpt []byte) {
 	if len(l) < 3 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if l[0] != 'p' {
-		return nil, nil
+		return nil, nil, nil
 	}
-	l, classOpt = extractClassOpt(l[1:])
+	// TODO: can those be in arbitrary order? If yes, I need to retry
+	l = l[1:]
+	l, classOpt = extractClassOpt(l)
+	l, styleOpt = extractStyleOpt(l)
 	if len(l) < 2 || l[0] != '.' || l[1] != ' ' {
-		return nil, nil
+		return nil, nil, nil
 	}
-	return l[2:], classOpt
+	return l[2:], classOpt, styleOpt
 }
 
 func needsHtmlEscaping(b byte) []byte {
@@ -648,7 +675,7 @@ func (p *TextileParser) serNoTextile(s []byte) {
 }
 
 // s is "$class[#$id]", we return ' class="$class" id="$id"'
-func serClassOrId(s []byte) string {
+func serClassOrIdOpt(s []byte) string {
 	if s == nil || len(s) == 0 {
 		return ""
 	}
@@ -662,14 +689,46 @@ func serClassOrId(s []byte) string {
 	return fmt.Sprintf(` class="%s" id="%s"`, string(s[:idx]), string(s[idx+1:]))
 }
 
-func (p *TextileParser) serP(s []byte, classOpt []byte) {
-	s2 := serClassOrId(classOpt)
-	p.out.WriteString(fmt.Sprintf("\t<p%s>%s</p>", s2, string(s)))
+func prettyPrintStyle(s []byte) []byte {
+	res := make([]byte, 0)
+	state := 0 // 0 - regular, 1 - after ';'
+	for _, b := range s {
+		if state == 0 {
+			res = append(res, b)
+			if b == ';' {
+				state = 1
+			}
+		} else {
+			if b != ' ' {
+				res = append(res, ' ')
+				res = append(res, b)
+				state = 0
+			}
+		}
+	}
+	if res[len(res)-1] != ';' {
+		res = append(res, ';')
+	}
+	return res
+}
+
+func serStyleOpt(s []byte) string {
+	if s == nil || len(s) == 0 {
+		return ""
+	}
+	s = prettyPrintStyle(s)
+	return fmt.Sprintf(` style="%s"`, string(s))
+}
+
+func (p *TextileParser) serP(s, classOpt, styleOpt []byte) {
+	s1 := serClassOrIdOpt(classOpt)
+	s2 := serStyleOpt(styleOpt)
+	p.out.WriteString(fmt.Sprintf("\t<p%s%s>%s</p>", s1, s2, string(s)))
 }
 
 func (p *TextileParser) serBlockQuote(s []byte) {
 	p.out.WriteString("\t<blockquote>\n\t")
-	p.serP(s, nil)
+	p.serP(s, nil, nil)
 	p.out.WriteString("\n\t</blockquote>")
 }
 
@@ -791,8 +850,8 @@ func (p *TextileParser) serParagraph(lines [][]byte) {
 			p.serNoTextile(rest)
 			return
 		}
-		if rest, classOpt := isP(l); rest != nil {
-			p.serP(rest, classOpt)
+		if rest, classOpt, styleOpt := isP(l); rest != nil {
+			p.serP(rest, classOpt, styleOpt)
 			return
 		}
 		if rest := isBlockQuote(l); rest != nil {

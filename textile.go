@@ -248,25 +248,26 @@ func isSpanWithLang(l []byte) ([]byte, []byte, []byte) {
 		return nil, nil, nil
 	}
 	l = l[1:]
-	lang, l := extractInside(l, '[', ']')
-	if lang == nil {
+	l, langOpt := extractLangOpt(l)
+	if langOpt == nil {
 		return nil, nil, nil
 	}
 	inside, rest := extractUntil(l, '%')
-	return inside, lang, rest
+	return inside, langOpt, rest
 }
 
 // *{$styleOpt}$inside*$rest
-func isStrongWithOptStyle(l []byte) ([]byte, []byte, []byte) {
+func isStrongWithOptStyle(l []byte) (inside, styleOpt, rest []byte) {
 	if len(l) < 3 {
 		return nil, nil, nil
 	}
 	if l[0] != '*' {
 		return nil, nil, nil
 	}
-	style, l := extractInside(l[1:], '{', '}')
-	inside, rest := extractUntil(l, '*')
-	return inside, style, rest
+	l = l[1:]
+	l, styleOpt = extractStyleOpt(l)
+	inside, rest = extractUntil(l, '*')
+	return inside, styleOpt, rest
 }
 
 func isChar(c byte) bool {
@@ -308,7 +309,7 @@ func isStyleChar(c byte) bool {
 }
 
 // {$style}$rest
-func extractStyleOpt(l []byte) (rest []byte, styleOpt []byte) {
+func extractStyleOpt(l []byte) (rest, styleOpt []byte) {
 	if len(l) < 3 {
 		return l, nil
 	}
@@ -318,6 +319,30 @@ func extractStyleOpt(l []byte) (rest []byte, styleOpt []byte) {
 	for i := 1; i < len(l); i++ {
 		if !isStyleChar(l[i]) {
 			if l[i] == '}' {
+				return l[i+1:], l[1:i]
+			}
+		}
+	}
+	return l, nil
+}
+
+// TODO: it's possible this list is not complete
+func isLangChar(c byte) bool {
+	return isChar(c) ||
+		(-1 != bytes.IndexByte([]byte{'-'}, c))
+}
+
+// [$lang]$rest
+func extractLangOpt(l []byte) (rest, langOpt []byte) {
+	if len(l) < 3 {
+		return l, nil
+	}
+	if l[0] != '[' {
+		return l, nil
+	}
+	for i := 1; i < len(l); i++ {
+		if !isLangChar(l[i]) {
+			if l[i] == ']' {
 				return l[i+1:], l[1:i]
 			}
 		}
@@ -502,22 +527,23 @@ func isBlockQuote(l []byte) []byte {
 	return startsWith(l, []byte("bq. "))
 }
 
-// p($classOpt){$styleOpt}. $rest
-func isP(l []byte) (rest []byte, classOpt []byte, styleOpt []byte) {
+// p($classOpt){$styleOpt}[$langOpt]. $rest
+func isP(l []byte) (rest, classOpt, styleOpt, langOpt []byte) {
 	if len(l) < 3 {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	if l[0] != 'p' {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 	// TODO: can those be in arbitrary order? If yes, I need to retry
 	l = l[1:]
 	l, classOpt = extractClassOpt(l)
 	l, styleOpt = extractStyleOpt(l)
+	l, langOpt = extractLangOpt(l)
 	if len(l) < 2 || l[0] != '.' || l[1] != ' ' {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
-	return l[2:], classOpt, styleOpt
+	return l[2:], classOpt, styleOpt, langOpt
 }
 
 func needsHtmlEscaping(b byte) []byte {
@@ -720,15 +746,23 @@ func serStyleOpt(s []byte) string {
 	return fmt.Sprintf(` style="%s"`, string(s))
 }
 
-func (p *TextileParser) serP(s, classOpt, styleOpt []byte) {
+func serLangOpt(s []byte) string {
+	if s == nil || len(s) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(` lang="%s"`, string(s))
+}
+
+func (p *TextileParser) serP(s, classOpt, styleOpt, langOpt []byte) {
 	s1 := serClassOrIdOpt(classOpt)
 	s2 := serStyleOpt(styleOpt)
-	p.out.WriteString(fmt.Sprintf("\t<p%s%s>%s</p>", s1, s2, string(s)))
+	s3 := serLangOpt(langOpt)
+	p.out.WriteString(fmt.Sprintf("\t<p%s%s%s>%s</p>", s1, s2, s3, string(s)))
 }
 
 func (p *TextileParser) serBlockQuote(s []byte) {
 	p.out.WriteString("\t<blockquote>\n\t")
-	p.serP(s, nil, nil)
+	p.serP(s, nil, nil, nil)
 	p.out.WriteString("\n\t</blockquote>")
 }
 
@@ -850,8 +884,8 @@ func (p *TextileParser) serParagraph(lines [][]byte) {
 			p.serNoTextile(rest)
 			return
 		}
-		if rest, classOpt, styleOpt := isP(l); rest != nil {
-			p.serP(rest, classOpt, styleOpt)
+		if rest, classOpt, styleOpt, langOpt := isP(l); rest != nil {
+			p.serP(rest, classOpt, styleOpt, langOpt)
 			return
 		}
 		if rest := isBlockQuote(l); rest != nil {

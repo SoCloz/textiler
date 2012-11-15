@@ -280,7 +280,7 @@ func isDigit(c byte) bool {
 
 // TODO: it's possible this list is not complete
 func isClassChar(c byte) bool {
-	return isChar(c) || isDigit(c)
+	return isChar(c) || isDigit(c) || c == '#' || c == '-'
 }
 
 // ($class)$rest
@@ -649,7 +649,11 @@ func (p *TextileParser) serNoTextile(s []byte) {
 
 func (p *TextileParser) serP(s []byte, classOpt []byte) {
 	if classOpt != nil {
-		p.out.WriteString(fmt.Sprintf("\t<p class=\"%s\">%s</p>", string(classOpt), string(s)))
+		if classOpt[0] == '#' {
+			p.out.WriteString(fmt.Sprintf("\t<p id=\"%s\">%s</p>", string(classOpt[1:]), string(s)))
+		} else {
+			p.out.WriteString(fmt.Sprintf("\t<p class=\"%s\">%s</p>", string(classOpt), string(s)))
+		}
 	} else {
 		p.out.WriteString(fmt.Sprintf("\t<p>%s</p>", string(s)))
 	}

@@ -647,16 +647,24 @@ func (p *TextileParser) serNoTextile(s []byte) {
 	p.out.Write(s)
 }
 
-func (p *TextileParser) serP(s []byte, classOpt []byte) {
-	if classOpt != nil {
-		if classOpt[0] == '#' {
-			p.out.WriteString(fmt.Sprintf("\t<p id=\"%s\">%s</p>", string(classOpt[1:]), string(s)))
-		} else {
-			p.out.WriteString(fmt.Sprintf("\t<p class=\"%s\">%s</p>", string(classOpt), string(s)))
-		}
-	} else {
-		p.out.WriteString(fmt.Sprintf("\t<p>%s</p>", string(s)))
+// s is "$class[#$id]", we return ' class="$class" id="$id"'
+func serClassOrId(s []byte) string {
+	if s == nil || len(s) == 0 {
+		return ""
 	}
+	idx := bytes.IndexByte(s, '#')
+	if -1 == idx {
+		return fmt.Sprintf(` class="%s"`, string(s))
+	}
+	if 0 == idx {
+		return fmt.Sprintf(` id="%s"`, string(s[1:]))
+	}
+	return fmt.Sprintf(` class="%s" id="%s"`, string(s[:idx]), string(s[idx+1:]))
+}
+
+func (p *TextileParser) serP(s []byte, classOpt []byte) {
+	s2 := serClassOrId(classOpt)
+	p.out.WriteString(fmt.Sprintf("\t<p%s>%s</p>", s2, string(s)))
 }
 
 func (p *TextileParser) serBlockQuote(s []byte) {

@@ -92,7 +92,7 @@ func TestUrl(t *testing.T) {
 		`"foo":Bar tender`, "foo", "Bar", " tender",
 	}
 	for i := 0; i < len(data)/4; i++ {
-		title, url, rest := isUrlOrRefName([]byte(data[i*4]))
+		rest, title, url := parseUrlOrRefName([]byte(data[i*4]))
 		titleExpected := data[i*4+1]
 		urlExpected := data[i*4+2]
 		restExpected := data[i*4+3]
@@ -108,7 +108,7 @@ func TestUrl(t *testing.T) {
 	}
 }
 
-func TestSerLine(t *testing.T) {
+func TestParseInline(t *testing.T) {
 	data := []string{
 		"__f__", "<i>f</i>",
 		"____", "<i></i>",
@@ -126,7 +126,7 @@ func TestSerLine(t *testing.T) {
 	for i := 0; i < len(data)/2; i++ {
 		p := NewParserWithRenderer(false)
 		s := data[i*2]
-		p.serLine([]byte(s))
+		p.parseInline([]byte(s))
 		expected := []byte(data[i*2+1])
 		actual := p.out.Bytes()
 		if !bytes.Equal(expected, actual) {
@@ -144,13 +144,13 @@ func TestItalic(t *testing.T) {
 		"__a_d___lo", "a_d", "_lo",
 	}
 	for i := 0; i < len(italics)/3; i++ {
-		r1, r2 := isItalic([]byte(italics[i*3]))
+		rest, inside := parseItalic([]byte(italics[i*3]))
 		er1, er2 := []byte(italics[i*3+1]), []byte(italics[i*3+2])
-		if !bytes.Equal(r1, er1) {
-			t.Fatalf("\nExpected[%#v]\nActual  [%#v]", er1, r1)
+		if !bytes.Equal(inside, er1) {
+			t.Fatalf("\nExpected[%#v]\nActual  [%#v]", er1, inside)
 		}
-		if !bytes.Equal(r2, er2) {
-			t.Fatalf("\nExpected[%#v]\nActual  [%#v]", er2, r2)
+		if !bytes.Equal(rest, er2) {
+			t.Fatalf("\nExpected[%#v]\nActual  [%#v]", er2, rest)
 		}
 	}
 }
@@ -173,7 +173,7 @@ func TestTextileXhtml(t *testing.T) {
 	// 4,5,6,7,8,9,10 - smartypants for '"'
 	passingTests := []int{0, 1, 2, 3, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
 		21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-		39, 40, 41, 42, 43}
+		39, 40, 41, 42}
 	//fmt.Printf("%d xhtml tests\n", len(XhtmlTests) / 2)
 	for _, i := range passingTests {
 		s := XhtmlTests[i*2]

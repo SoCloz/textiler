@@ -37,15 +37,15 @@ func TestUrlRef(t *testing.T) {
 func TestIsSpan(t *testing.T) {
 	data := []string{
 		"%{color:red}%", "color:red", "", "",
-		"%{color:red}foo%", "color:red", "foo", "",
+		"%{color:red;foo:bar}foo%", "color:red;foo:bar", "foo", "",
 		"%{color:red}inside%after", "color:red", "inside", "after",
 	}
 	var expected string
 	for i := 0; i < len(data)/4; i++ {
-		inside, style, rest := isSpanWithOptStyle([]byte(data[i*4]))
+		rest, inside, _, styleOpt, _ := isSpan([]byte(data[i*4]))
 		expected = data[i*4+1]
-		if !bytes.Equal(style, []byte(expected)) {
-			t.Fatalf("\nExpected[%s]\nActual  [%s]", expected, string(style))
+		if !bytes.Equal(styleOpt, []byte(expected)) {
+			t.Fatalf("\nExpected[%s]\nActual  [%s]", expected, string(styleOpt))
 		}
 		expected = data[i*4+2]
 		if !bytes.Equal(inside, []byte(expected)) {

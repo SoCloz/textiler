@@ -203,13 +203,13 @@ func isImg(l []byte) ([]byte, []byte, int, []byte, []byte) {
 	return imgSrc, alt, style, url, l
 }
 
-func extractUntil(l []byte, c byte) ([]byte, []byte) {
+func extractUntil(l []byte, c byte) (inside, rest []byte) {
 	idx := bytes.IndexByte(l, c)
 	if idx == -1 {
 		return nil, l
 	}
-	inside := l[:idx]
-	rest := l[idx+1:]
+	inside = l[:idx]
+	rest = l[idx+1:]
 	return inside, rest
 }
 
@@ -226,42 +226,27 @@ func extractInside(l []byte, start, end byte) ([]byte, []byte) {
 	return inside, rest
 }
 
-// %{$style}$inside%$rest
-func isSpanWithOptStyle(l []byte) ([]byte, []byte, []byte) {
-	if len(l) < 3 {
-		return nil, nil, nil
-	}
-	if l[0] != '%' {
-		return nil, nil, nil
-	}
-	style, l := extractInside(l[1:], '{', '}')
-	inside, rest := extractUntil(l, '%')
-	return inside, style, rest
+func startsWithByte(s []byte, b byte) bool {
+	return len(s) > 0 && s[0] == b
 }
 
-// %[$lang]$inside%$rest
-func isSpanWithLang(l []byte) ([]byte, []byte, []byte) {
-	if len(l) < 4 {
-		return nil, nil, nil
+// %($classOpt){$styleOpt}[$langOpt]$inside%$rest
+func isSpan(l []byte) (rest, inside, classOpt, styleOpt, langOpt []byte) {
+	if !startsWithByte(l, '%') {
+		return nil, nil, nil, nil, nil
 	}
-	if l[0] != '%' && l[1] != '[' {
-		return nil, nil, nil
-	}
+	// TODO: can those be in arbitrary order? If yes, I need to retry
 	l = l[1:]
-	l, langOpt := extractLangOpt(l)
-	if langOpt == nil {
-		return nil, nil, nil
-	}
-	inside, rest := extractUntil(l, '%')
-	return inside, langOpt, rest
+	l, classOpt = extractClassOpt(l)
+	l, styleOpt = extractStyleOpt(l)
+	l, langOpt = extractLangOpt(l)
+	inside, rest = extractUntil(l, '%')
+	return rest, inside, classOpt, styleOpt, langOpt
 }
 
 // *{$styleOpt}$inside*$rest
 func isStrongWithOptStyle(l []byte) (inside, styleOpt, rest []byte) {
-	if len(l) < 3 {
-		return nil, nil, nil
-	}
-	if l[0] != '*' {
+	if !startsWithByte(l, '*') {
 		return nil, nil, nil
 	}
 	l = l[1:]
@@ -286,10 +271,7 @@ func isClassChar(c byte) bool {
 
 // ($class)$rest
 func extractClassOpt(l []byte) (rest []byte, classOpt []byte) {
-	if len(l) < 3 {
-		return l, nil
-	}
-	if l[0] != '(' {
+	if !startsWithByte(l, '(') {
 		return l, nil
 	}
 	for i := 1; i < len(l); i++ {
@@ -653,9 +635,17 @@ func (p *TextileParser) serTagWithOptStyle(before, inside, style, rest []byte, t
 	p.serLine(rest)
 }
 
-func (p *TextileParser) serSpanWithLang(before, lang, inside, rest []byte) {
+func serAttributesOpt(classOpt, styleOpt, langOpt []byte) string {
+	s1 := serClassOrIdOpt(classOpt)
+	s2 := serStyleOpt(styleOpt)
+	s3 := serLangOpt(langOpt)
+	return s1 + s2 + s3
+}
+
+func (p *TextileParser) serSpan(before, rest, inside, classOpt, styleOpt, langOpt []byte) {
 	p.serEscaped(before)
-	p.out.WriteString(fmt.Sprintf(`<span lang="%s">`, string(lang)))
+	attrs := serAttributesOpt(classOpt, styleOpt, langOpt)
+	p.out.WriteString(fmt.Sprintf(`<span%s>`, attrs))
 	p.serLine(inside)
 	p.out.WriteString("</span>")
 	p.serLine(rest)
@@ -754,10 +744,8 @@ func serLangOpt(s []byte) string {
 }
 
 func (p *TextileParser) serP(s, classOpt, styleOpt, langOpt []byte) {
-	s1 := serClassOrIdOpt(classOpt)
-	s2 := serStyleOpt(styleOpt)
-	s3 := serLangOpt(langOpt)
-	p.out.WriteString(fmt.Sprintf("\t<p%s%s%s>%s</p>", s1, s2, s3, string(s)))
+	attrs := serAttributesOpt(classOpt, styleOpt, langOpt)
+	p.out.WriteString(fmt.Sprintf("\t<p%s>%s</p>", attrs, string(s)))
 }
 
 func (p *TextileParser) serBlockQuote(s []byte) {
@@ -794,14 +782,11 @@ func (p *TextileParser) serLine(l []byte) {
 				return
 			}
 		} else if b == '%' {
-			if inside, lang, rest := isSpanWithLang(l[i:]); inside != nil {
-				p.serSpanWithLang(l[:i], lang, inside, rest)
-				return
+			rest, inside, classOpt, styleOpt, langOpt := isSpan(l[i:])
+			if inside != nil {
+				p.serSpan(l[:i], rest, inside, classOpt, styleOpt, langOpt)
 			}
-			if inside, style, rest := isSpanWithOptStyle(l[i:]); inside != nil {
-				p.serTagWithOptStyle(l[:i], inside, style, rest, "span")
-				return
-			}
+			return
 		} else if b == '"' {
 			if title, urlOrRefName, rest := isUrlOrRefName(l[i:]); title != nil {
 				if urlRef, ok := p.refs[string(urlOrRefName)]; ok {

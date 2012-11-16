@@ -531,14 +531,19 @@ func isP(l []byte) (rest, classOpt, styleOpt, langOpt []byte) {
 	l = l[1:]
 	var styleAlign []byte
 	if l[0] == '<' {
-		l = l[1:]
-		styleAlign = []byte("text-align:left;")
+		if l[1] == '>' {
+			l = l[2:]
+			styleAlign = []byte("text-align:justify")
+		} else {
+			l = l[1:]
+			styleAlign = []byte("text-align:left")
+		}
 	} else if l[0] == '>' {
 		l = l[1:]
-		styleAlign = []byte("text-align:right;")
+		styleAlign = []byte("text-align:right")
 	} else if l[0] == '=' {
 		l = l[1:]
-		styleAlign = []byte("text-align:center;")
+		styleAlign = []byte("text-align:center")
 	}
 	l, classOpt = extractClassOpt(l)
 	l, styleOpt = extractStyleOpt(l)

@@ -226,13 +226,13 @@ func extractInside(l []byte, start, end byte) ([]byte, []byte) {
 	return inside, rest
 }
 
-func startsWithByte(s []byte, b byte) bool {
-	return len(s) > 0 && s[0] == b
+func startsWithByte(s []byte, b byte, minLen int) bool {
+	return len(s) >= minLen && s[0] == b
 }
 
 // %($classOpt){$styleOpt}[$langOpt]$inside%$rest
 func isSpan(l []byte) (rest, inside, classOpt, styleOpt, langOpt []byte) {
-	if !startsWithByte(l, '%') {
+	if !startsWithByte(l, '%', 3) {
 		return nil, nil, nil, nil, nil
 	}
 	// TODO: can those be in arbitrary order? If yes, I need to retry
@@ -246,7 +246,7 @@ func isSpan(l []byte) (rest, inside, classOpt, styleOpt, langOpt []byte) {
 
 // *{$styleOpt}$inside*$rest
 func isStrongWithOptStyle(l []byte) (inside, styleOpt, rest []byte) {
-	if !startsWithByte(l, '*') {
+	if !startsWithByte(l, '*', 3) {
 		return nil, nil, nil
 	}
 	l = l[1:]
@@ -271,7 +271,7 @@ func isClassChar(c byte) bool {
 
 // ($class)$rest
 func extractClassOpt(l []byte) (rest []byte, classOpt []byte) {
-	if !startsWithByte(l, '(') {
+	if !startsWithByte(l, '(', 3) {
 		return l, nil
 	}
 	for i := 1; i < len(l); i++ {
@@ -509,23 +509,42 @@ func isBlockQuote(l []byte) []byte {
 	return startsWith(l, []byte("bq. "))
 }
 
+func byteConcat(b1, b2 []byte) []byte {
+	if b1 == nil && b2 == nil {
+		return nil
+	}
+	if b1 == nil {
+		return b2
+	}
+	if b2 == nil {
+		return b1
+	}
+	return append(b1, b2...)
+}
+
 // p($classOpt){$styleOpt}[$langOpt]. $rest
 func isP(l []byte) (rest, classOpt, styleOpt, langOpt []byte) {
-	if len(l) < 3 {
-		return nil, nil, nil, nil
-	}
-	if l[0] != 'p' {
+	if !startsWithByte(l, 'p', 3) {
 		return nil, nil, nil, nil
 	}
 	// TODO: can those be in arbitrary order? If yes, I need to retry
 	l = l[1:]
+	var styleAlign []byte
+	if l[0] == '<' {
+		l = l[1:]
+		styleAlign = []byte("text-align:left;")
+	} else if l[0] == '>' {
+		l = l[1:]
+		styleAlign = []byte("text-align:right;")
+	}
 	l, classOpt = extractClassOpt(l)
 	l, styleOpt = extractStyleOpt(l)
 	l, langOpt = extractLangOpt(l)
 	if len(l) < 2 || l[0] != '.' || l[1] != ' ' {
 		return nil, nil, nil, nil
 	}
-	return l[2:], classOpt, styleOpt, langOpt
+	style := byteConcat(styleAlign, styleOpt)
+	return l[2:], classOpt, style, langOpt
 }
 
 func needsHtmlEscaping(b byte) []byte {

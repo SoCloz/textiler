@@ -230,6 +230,92 @@ func startsWithByte(s []byte, b byte, minLen int) bool {
 	return len(s) >= minLen && s[0] == b
 }
 
+func byteConcat(b1, b2 []byte) []byte {
+	if b1 == nil && b2 == nil {
+		return nil
+	}
+	if b1 == nil {
+		return b2
+	}
+	if b2 == nil {
+		return b1
+	}
+	return append(b1, b2...)
+}
+
+type PaddingInfo struct {
+	alignLeft    bool
+	alignRight   bool
+	alignCenter  bool
+	alignJustify bool
+	paddingLeft  int
+	paddingRight int
+}
+
+func formatPaddingInfo(pi PaddingInfo) []byte {
+	s := ""
+	if pi.paddingLeft > 0 {
+		s += fmt.Sprintf("padding-left:%dem;", pi.paddingLeft)
+	}
+	if pi.paddingRight > 0 {
+		s += fmt.Sprintf("padding-right:%dem;", pi.paddingRight)
+	}
+	if pi.alignLeft {
+		s += "text-align:left;"
+	}
+	if pi.alignRight {
+		s += "text-align:right;"
+	}
+	if pi.alignJustify {
+		s += "text-align:justify;"
+	}
+	if pi.alignCenter {
+		s += "text-align:center;"
+	}
+	if len(s) == 0 {
+		return nil
+	}
+	return []byte(s)
+}
+
+func countRepeatedChars(l []byte, c byte) (rest []byte, n int) {
+	for n, b := range l {
+		if b != c {
+			return l[n:], n
+		}
+	}
+	return l[0:0], len(l)
+}
+
+func parseStyle(l []byte) (rest, style []byte) {
+	var pi PaddingInfo
+	for len(l) > 0 {
+		c := l[0]
+		if c == '<' {
+			if len(l) > 1 && l[1] == '>' {
+				l = l[2:]
+				pi.alignJustify = true
+			} else {
+				l = l[1:]
+				pi.alignLeft = true
+			}
+		} else if c == '>' {
+			l = l[1:]
+			pi.alignRight = true
+		} else if c == '=' {
+			l = l[1:]
+			pi.alignCenter = true
+		} else if c == '(' {
+			l, pi.paddingLeft = countRepeatedChars(l, '(')
+		} else if c == ')' {
+			l, pi.paddingRight = countRepeatedChars(l, ')')
+		} else {
+			break
+		}
+	}
+	return l, formatPaddingInfo(pi)
+}
+
 type AttributesOpt struct {
 	class []byte
 	style []byte
@@ -237,12 +323,28 @@ type AttributesOpt struct {
 }
 
 func parseAttributesOpt(l []byte) (rest []byte, attrs *AttributesOpt) {
-	// TODO: can those be in arbitrary order? If yes, this must be more
-	// complicated
 	attrs = &AttributesOpt{}
-	l, attrs.class = extractClassOpt(l)
-	l, attrs.style = extractStyleOpt(l)
-	l, attrs.lang = extractLangOpt(l)
+	if l[0] == '(' {
+		l, attrs.class = extractClassOpt(l)
+	}
+	l, style := parseStyle(l)
+
+	for len(l) > 0 {
+		n := len(l)
+		switch l[0] {
+		case '(':
+			l, attrs.class = extractClassOpt(l)
+		case '[':
+			l, attrs.lang = extractLangOpt(l)
+		case '{':
+			l, attrs.style = extractStyleOpt(l)
+		}
+		if n == len(l) {
+			break
+		}
+	}
+
+	attrs.style = byteConcat(attrs.style, style)
 	return l, attrs
 }
 
@@ -306,6 +408,14 @@ func isStyleChar(c byte) bool {
 		(-1 != bytes.IndexByte([]byte{'#', '-', ':', ';'}, c))
 }
 
+func endsWithByte(s []byte, b byte) bool {
+	if s == nil || len(s) == 0 {
+		return false
+	}
+	n := len(s) - 1
+	return s[n] == b
+}
+
 // {$style}$rest
 func extractStyleOpt(l []byte) (rest, styleOpt []byte) {
 	if !startsWithByte(l, '{', 3) {
@@ -317,7 +427,11 @@ func extractStyleOpt(l []byte) (rest, styleOpt []byte) {
 	for i := 1; i < len(l); i++ {
 		if !isStyleChar(l[i]) {
 			if l[i] == '}' {
-				return l[i+1:], l[1:i]
+				rest, styleOpt = l[i+1:], l[1:i]
+				if !endsWithByte(styleOpt, ';') {
+					styleOpt = append(styleOpt, ';')
+				}
+				return rest, styleOpt
 			}
 		}
 	}
@@ -432,15 +546,10 @@ func parseH(l []byte) (rest []byte, level int, attrs *AttributesOpt) {
 		return l, -1, nil
 	}
 	l = l[2:]
-	// TODO: this part is exactly as parseP
 	l, attrs = parseAttributesOpt(l)
-	// note: this must be after extractClassOpt(), since they both parse
-	// '(', but parseStyle() does that unconditionally.
-	l, style := parseStyle(l)
 	if len(l) < 2 || l[0] != '.' || l[1] != ' ' {
 		return l, -1, nil
 	}
-	attrs.style = byteConcat(attrs.style, style)
 	return l[2:], int(n), attrs
 }
 
@@ -532,92 +641,6 @@ func isBlockQuote(l []byte) []byte {
 	return startsWith(l, []byte("bq. "))
 }
 
-func byteConcat(b1, b2 []byte) []byte {
-	if b1 == nil && b2 == nil {
-		return nil
-	}
-	if b1 == nil {
-		return b2
-	}
-	if b2 == nil {
-		return b1
-	}
-	return append(b1, b2...)
-}
-
-type PaddingInfo struct {
-	alignLeft    bool
-	alignRight   bool
-	alignCenter  bool
-	alignJustify bool
-	paddingLeft  int
-	paddingRight int
-}
-
-func formatPaddingInfo(pi PaddingInfo) []byte {
-	s := ""
-	if pi.paddingLeft > 0 {
-		s += fmt.Sprintf("padding-left:%dem;", pi.paddingLeft)
-	}
-	if pi.paddingRight > 0 {
-		s += fmt.Sprintf("padding-right:%dem;", pi.paddingRight)
-	}
-	if pi.alignLeft {
-		s += "text-align:left;"
-	}
-	if pi.alignRight {
-		s += "text-align:right;"
-	}
-	if pi.alignJustify {
-		s += "text-align:justify;"
-	}
-	if pi.alignCenter {
-		s += "text-align:center;"
-	}
-	if len(s) == 0 {
-		return nil
-	}
-	return []byte(s)
-}
-
-func countRepeatedChars(l []byte, c byte) (rest []byte, n int) {
-	for n, b := range l {
-		if b != c {
-			return l[n:], n
-		}
-	}
-	return l[0:0], len(l)
-}
-
-func parseStyle(l []byte) (rest, style []byte) {
-	var pi PaddingInfo
-	for len(l) > 0 {
-		c := l[0]
-		if c == '<' {
-			if len(l) > 1 && l[1] == '>' {
-				l = l[2:]
-				pi.alignJustify = true
-			} else {
-				l = l[1:]
-				pi.alignLeft = true
-			}
-		} else if c == '>' {
-			l = l[1:]
-			pi.alignRight = true
-		} else if c == '=' {
-			l = l[1:]
-			pi.alignCenter = true
-		} else if c == '(' {
-			l, pi.paddingLeft = countRepeatedChars(l, '(')
-		} else if c == ')' {
-			l, pi.paddingRight = countRepeatedChars(l, ')')
-		} else {
-			break
-		}
-	}
-	return l, formatPaddingInfo(pi)
-}
-
 // p($classOpt){$styleOpt}[$langOpt]. $rest
 func parseP(l []byte) (rest []byte, attrs *AttributesOpt) {
 	if !startsWithByte(l, 'p', 3) {
@@ -625,13 +648,9 @@ func parseP(l []byte) (rest []byte, attrs *AttributesOpt) {
 	}
 	l = l[1:]
 	l, attrs = parseAttributesOpt(l)
-	// note: this must be after extractClassOpt(), since they both parse
-	// '(', but parseStyle() does that unconditionally.
-	l, style := parseStyle(l)
 	if len(l) < 2 || l[0] != '.' || l[1] != ' ' {
 		return nil, nil
 	}
-	attrs.style = byteConcat(attrs.style, style)
 	return l[2:], attrs
 }
 
@@ -708,7 +727,7 @@ func (p *TextileParser) serTagStartWithOptStyle(tag string, style []byte) {
 	if style == nil {
 		p.out.WriteByte('>')
 	} else {
-		p.out.WriteString(fmt.Sprintf(` style="%s;">`, string(style)))
+		p.out.WriteString(fmt.Sprintf(` style="%s">`, string(style)))
 	}
 }
 
@@ -832,7 +851,7 @@ func prettyPrintStyle(s []byte) []byte {
 			}
 		}
 	}
-	if res[len(res)-1] != ';' {
+	if !endsWithByte(res, ';') {
 		res = append(res, ';')
 	}
 	return res

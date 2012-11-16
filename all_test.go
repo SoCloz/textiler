@@ -34,7 +34,7 @@ func TestUrlRef(t *testing.T) {
 	}
 }
 
-func TestIsSpan(t *testing.T) {
+func TestParseSpan(t *testing.T) {
 	data := []string{
 		"%{color:red}%", "color:red", "", "",
 		"%{color:red;foo:bar}foo%", "color:red;foo:bar", "foo", "",
@@ -42,10 +42,10 @@ func TestIsSpan(t *testing.T) {
 	}
 	var expected string
 	for i := 0; i < len(data)/4; i++ {
-		rest, inside, _, styleOpt, _ := isSpan([]byte(data[i*4]))
+		rest, inside, attrs := parseSpan([]byte(data[i*4]))
 		expected = data[i*4+1]
-		if !bytes.Equal(styleOpt, []byte(expected)) {
-			t.Fatalf("\nExpected[%s]\nActual  [%s]", expected, string(styleOpt))
+		if !bytes.Equal(attrs.style, []byte(expected)) {
+			t.Fatalf("\nExpected[%s]\nActual  [%s]", expected, string(attrs.style))
 		}
 		expected = data[i*4+2]
 		if !bytes.Equal(inside, []byte(expected)) {
@@ -67,7 +67,7 @@ func TestIsHLine(t *testing.T) {
 		"h6. loh", "6", "loh",
 	}
 	for i := 0; i < len(data)/3; i++ {
-		n, rest := isHLine([]byte(data[i*3]))
+		rest, n, _ := parseH([]byte(data[i*3]))
 		expectedN := data[i*3+1]
 		if n < 0 {
 			if expectedN != "" {
@@ -172,7 +172,8 @@ func TestTextileXhtml(t *testing.T) {
 	// TODO: for now mark tests that we expect to pass explicitly
 	// 4,5,6,7,8,9,10 - smartypants for '"'
 	passingTests := []int{0, 1, 2, 3, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-		21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38}
+		21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+		39}
 	//fmt.Printf("%d xhtml tests\n", len(XhtmlTests) / 2)
 	for _, i := range passingTests {
 		s := XhtmlTests[i*2]

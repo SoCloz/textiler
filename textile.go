@@ -230,18 +230,31 @@ func startsWithByte(s []byte, b byte, minLen int) bool {
 	return len(s) >= minLen && s[0] == b
 }
 
+type AttributesOpt struct {
+	class []byte
+	style []byte
+	lang  []byte
+}
+
+func parseAttributesOpt(l []byte) (rest []byte, attrs *AttributesOpt) {
+	// TODO: can those be in arbitrary order? If yes, this must be more
+	// complicated
+	attrs = &AttributesOpt{}
+	l, attrs.class = extractClassOpt(l)
+	l, attrs.style = extractStyleOpt(l)
+	l, attrs.lang = extractLangOpt(l)
+	return l, attrs
+}
+
 // %($classOpt){$styleOpt}[$langOpt]$inside%$rest
-func isSpan(l []byte) (rest, inside, classOpt, styleOpt, langOpt []byte) {
+func parseSpan(l []byte) (rest, inside []byte, attrs *AttributesOpt) {
 	if !startsWithByte(l, '%', 3) {
-		return nil, nil, nil, nil, nil
+		return nil, nil, nil
 	}
-	// TODO: can those be in arbitrary order? If yes, I need to retry
 	l = l[1:]
-	l, classOpt = extractClassOpt(l)
-	l, styleOpt = extractStyleOpt(l)
-	l, langOpt = extractLangOpt(l)
+	l, attrs = parseAttributesOpt(l)
 	inside, rest = extractUntil(l, '%')
-	return rest, inside, classOpt, styleOpt, langOpt
+	return rest, inside, attrs
 }
 
 // *{$styleOpt}$inside*$rest
@@ -274,6 +287,9 @@ func extractClassOpt(l []byte) (rest []byte, classOpt []byte) {
 	if !startsWithByte(l, '(', 3) {
 		return l, nil
 	}
+	if l[1] == ')' {
+		return l, nil
+	}
 	for i := 1; i < len(l); i++ {
 		if !isClassChar(l[i]) {
 			if l[i] == ')' {
@@ -292,10 +308,10 @@ func isStyleChar(c byte) bool {
 
 // {$style}$rest
 func extractStyleOpt(l []byte) (rest, styleOpt []byte) {
-	if len(l) < 3 {
+	if !startsWithByte(l, '{', 3) {
 		return l, nil
 	}
-	if l[0] != '{' {
+	if l[1] == '}' {
 		return l, nil
 	}
 	for i := 1; i < len(l); i++ {
@@ -316,10 +332,10 @@ func isLangChar(c byte) bool {
 
 // [$lang]$rest
 func extractLangOpt(l []byte) (rest, langOpt []byte) {
-	if len(l) < 3 {
+	if !startsWithByte(l, '[', 3) {
 		return l, nil
 	}
-	if l[0] != '[' {
+	if l[1] == ']' {
 		return l, nil
 	}
 	for i := 1; i < len(l); i++ {
@@ -406,19 +422,26 @@ func isCite(l []byte) ([]byte, []byte) {
 	return is2Byte(l, '?')
 }
 
-// h$n. $rest
-func isHLine(l []byte) (int, []byte) {
-	if len(l) < 4 {
-		return -1, nil
-	}
-	if l[0] != 'h' || l[2] != '.' || l[3] != ' ' {
-		return -1, nil
+// h${n}($classOpt){$styleOpt}[$langOpt]. $rest
+func parseH(l []byte) (rest []byte, level int, attrs *AttributesOpt) {
+	if !startsWithByte(l, 'h', 4) {
+		return l, -1, nil
 	}
 	n := l[1] - '0'
 	if n < 1 || n > 6 {
-		return -1, nil
+		return l, -1, nil
 	}
-	return int(n), l[4:]
+	l = l[2:]
+	// TODO: this part is exactly as parseP
+	l, attrs = parseAttributesOpt(l)
+	// note: this must be after extractClassOpt(), since they both parse
+	// '(', but parseStyle() does that unconditionally.
+	l, style := parseStyle(l)
+	if len(l) < 2 || l[0] != '.' || l[1] != ' ' {
+		return l, -1, nil
+	}
+	attrs.style = byteConcat(attrs.style, style)
+	return l[2:], int(n), attrs
 }
 
 // TODO: this is more complex
@@ -522,69 +545,94 @@ func byteConcat(b1, b2 []byte) []byte {
 	return append(b1, b2...)
 }
 
-func parsePadding(l []byte) (rest, style []byte) {
-	if len(l) < 1 {
-		return l, nil
+type PaddingInfo struct {
+	alignLeft    bool
+	alignRight   bool
+	alignCenter  bool
+	alignJustify bool
+	paddingLeft  int
+	paddingRight int
+}
+
+func formatPaddingInfo(pi PaddingInfo) []byte {
+	s := ""
+	if pi.paddingLeft > 0 {
+		s += fmt.Sprintf("padding-left:%dem;", pi.paddingLeft)
 	}
-	c := l[0]
-	if !(c == '(' || c == ')') {
-		return l, nil
+	if pi.paddingRight > 0 {
+		s += fmt.Sprintf("padding-right:%dem;", pi.paddingRight)
 	}
-	n := 1
-	l = l[1:]
-	for len(l) > 0 {
-		if l[0] != c {
-			break
+	if pi.alignLeft {
+		s += "text-align:left;"
+	}
+	if pi.alignRight {
+		s += "text-align:right;"
+	}
+	if pi.alignJustify {
+		s += "text-align:justify;"
+	}
+	if pi.alignCenter {
+		s += "text-align:center;"
+	}
+	if len(s) == 0 {
+		return nil
+	}
+	return []byte(s)
+}
+
+func countRepeatedChars(l []byte, c byte) (rest []byte, n int) {
+	for n, b := range l {
+		if b != c {
+			return l[n:], n
 		}
-		n += 1
-		l = l[1:]
 	}
-	if c == '(' {
-		return l, []byte(fmt.Sprintf("padding-left:%dem", n))
-	}
-	return l, []byte(fmt.Sprintf("padding-right:%dem", n))
+	return l[0:0], len(l)
 }
 
 func parseStyle(l []byte) (rest, style []byte) {
-	if len(l) < 1 {
-		return l, nil
-	}
-	c := l[0]
-	if c == '<' {
-		if len(l) > 1 && l[1] == '>' {
-			return l[2:], []byte("text-align:justify")
+	var pi PaddingInfo
+	for len(l) > 0 {
+		c := l[0]
+		if c == '<' {
+			if len(l) > 1 && l[1] == '>' {
+				l = l[2:]
+				pi.alignJustify = true
+			} else {
+				l = l[1:]
+				pi.alignLeft = true
+			}
+		} else if c == '>' {
+			l = l[1:]
+			pi.alignRight = true
+		} else if c == '=' {
+			l = l[1:]
+			pi.alignCenter = true
+		} else if c == '(' {
+			l, pi.paddingLeft = countRepeatedChars(l, '(')
+		} else if c == ')' {
+			l, pi.paddingRight = countRepeatedChars(l, ')')
+		} else {
+			break
 		}
-		return l[1:], []byte("text-align:left")
 	}
-	if c == '>' {
-		return l[1:], []byte("text-align:right")
-	}
-	if c == '=' {
-		return l[1:], []byte("text-align:center")
-	}
-	return parsePadding(l)
+	return l, formatPaddingInfo(pi)
 }
 
 // p($classOpt){$styleOpt}[$langOpt]. $rest
-func parseP(l []byte) (rest, classOpt, styleOpt, langOpt []byte) {
+func parseP(l []byte) (rest []byte, attrs *AttributesOpt) {
 	if !startsWithByte(l, 'p', 3) {
-		return nil, nil, nil, nil
+		return nil, nil
 	}
 	l = l[1:]
-	// TODO: can those be in arbitrary order? If yes, I need to retry
-	l, classOpt = extractClassOpt(l)
-	l, styleOpt = extractStyleOpt(l)
-	l, langOpt = extractLangOpt(l)
-
+	l, attrs = parseAttributesOpt(l)
 	// note: this must be after extractClassOpt(), since they both parse
 	// '(', but parseStyle() does that unconditionally.
 	l, style := parseStyle(l)
-
 	if len(l) < 2 || l[0] != '.' || l[1] != ' ' {
-		return nil, nil, nil, nil
+		return nil, nil
 	}
-	style = byteConcat(style, styleOpt)
-	return l[2:], classOpt, style, langOpt
+	attrs.style = byteConcat(attrs.style, style)
+	return l[2:], attrs
 }
 
 func needsHtmlEscaping(b byte) []byte {
@@ -694,17 +742,20 @@ func (p *TextileParser) serTagWithOptStyle(before, inside, style, rest []byte, t
 	p.serLine(rest)
 }
 
-func serAttributesOpt(classOpt, styleOpt, langOpt []byte) string {
-	s1 := serClassOrIdOpt(classOpt)
-	s2 := serStyleOpt(styleOpt)
-	s3 := serLangOpt(langOpt)
+func serAttributesOpt(attrs *AttributesOpt) string {
+	if attrs == nil {
+		return ""
+	}
+	s1 := serClassOrIdOpt(attrs.class)
+	s2 := serStyleOpt(attrs.style)
+	s3 := serLangOpt(attrs.lang)
 	return s1 + s2 + s3
 }
 
-func (p *TextileParser) serSpan(before, rest, inside, classOpt, styleOpt, langOpt []byte) {
+func (p *TextileParser) serSpan(before, rest, inside []byte, attrs *AttributesOpt) {
 	p.serEscaped(before)
-	attrs := serAttributesOpt(classOpt, styleOpt, langOpt)
-	p.out.WriteString(fmt.Sprintf(`<span%s>`, attrs))
+	attrsStr := serAttributesOpt(attrs)
+	p.out.WriteString(fmt.Sprintf(`<span%s>`, attrsStr))
 	p.serLine(inside)
 	p.out.WriteString("</span>")
 	p.serLine(rest)
@@ -802,20 +853,21 @@ func serLangOpt(s []byte) string {
 	return fmt.Sprintf(` lang="%s"`, string(s))
 }
 
-func (p *TextileParser) serP(s, classOpt, styleOpt, langOpt []byte) {
-	attrs := serAttributesOpt(classOpt, styleOpt, langOpt)
-	p.out.WriteString(fmt.Sprintf("\t<p%s>%s</p>", attrs, string(s)))
+func (p *TextileParser) serP(s []byte, attrs *AttributesOpt) {
+	attrsStr := serAttributesOpt(attrs)
+	p.out.WriteString(fmt.Sprintf("\t<p%s>%s</p>", attrsStr, string(s)))
 }
 
 func (p *TextileParser) serBlockQuote(s []byte) {
 	p.out.WriteString("\t<blockquote>\n\t")
-	p.serP(s, nil, nil, nil)
+	p.serP(s, nil)
 	p.out.WriteString("\n\t</blockquote>")
 }
 
-func (p *TextileParser) serHLine(n int, inside []byte) {
-	p.out.WriteString(fmt.Sprintf("\t<h%d>", n))
-	p.out.Write(inside) // TODO: escape?
+func (p *TextileParser) serHLine(rest []byte, n int, attrs *AttributesOpt) {
+	s := serAttributesOpt(attrs)
+	p.out.WriteString(fmt.Sprintf("\t<h%d%s>", n, s))
+	p.out.Write(rest) // TODO: escape?
 	p.out.WriteString(fmt.Sprintf("</h%d>", n))
 }
 
@@ -841,9 +893,9 @@ func (p *TextileParser) serLine(l []byte) {
 				return
 			}
 		} else if b == '%' {
-			rest, inside, classOpt, styleOpt, langOpt := isSpan(l[i:])
+			rest, inside, attrs := parseSpan(l[i:])
 			if inside != nil {
-				p.serSpan(l[:i], rest, inside, classOpt, styleOpt, langOpt)
+				p.serSpan(l[:i], rest, inside, attrs)
 			}
 			return
 		} else if b == '"' {
@@ -913,9 +965,9 @@ func (p *TextileParser) serParagraph(lines [][]byte) {
 	if len(lines) > 0 {
 		l := lines[0]
 		//fmt.Printf("serParagraph(): %s\n", string(l))
-		if n, inside := isHLine(l); n != -1 {
+		if rest, n, attrs := parseH(l); n != -1 {
 			//fmt.Printf("serParagraph(): h%d '%s'\n", n, string(inside))
-			p.serHLine(n, inside)
+			p.serHLine(rest, n, attrs)
 			if len(lines) > 1 {
 				p.serParagraph(lines[1:])
 			}
@@ -928,8 +980,8 @@ func (p *TextileParser) serParagraph(lines [][]byte) {
 			p.serNoTextile(rest)
 			return
 		}
-		if rest, classOpt, styleOpt, langOpt := parseP(l); rest != nil {
-			p.serP(rest, classOpt, styleOpt, langOpt)
+		if rest, attrs := parseP(l); rest != nil {
+			p.serP(rest, attrs)
 			return
 		}
 		if rest := isBlockQuote(l); rest != nil {

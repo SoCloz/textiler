@@ -30,7 +30,10 @@ type TextileParser struct {
 	refs map[string]*UrlRef
 
 	// TODO: this should be in TextileRenderer but for now it's ok
-	out bytes.Buffer
+	out *bytes.Buffer
+
+	// if we're parsing <ol> list, this keeps the previous buffer
+	olListBuf *bytes.Buffer
 
 	dumpLines      bool
 	dumpParagraphs bool
@@ -48,6 +51,7 @@ func NewTextileParser(renderer TextileRenderer) *TextileParser {
 	return &TextileParser{
 		r:    renderer,
 		refs: make(map[string]*UrlRef),
+		out:  new(bytes.Buffer),
 	}
 }
 
@@ -890,6 +894,23 @@ func (p *TextileParser) serHLine(rest []byte, n int, attrs *AttributesOpt) {
 	p.out.WriteString(fmt.Sprintf("</h%d>", n))
 }
 
+func parseOl(l []byte) []byte {
+	if !startsWithByte(l, '#', 2) || l[1] != ' ' {
+		return nil
+	}
+	return l[2:]
+}
+
+func (p *TextileParser) serOl(l []byte) {
+	if p.olListBuf == nil {
+		p.olListBuf = p.out
+		p.out = new(bytes.Buffer)
+	}
+	p.out.WriteString("\n\t\t<li>")
+	p.serLine(l)
+	p.out.WriteString("</li>")
+}
+
 func (p *TextileParser) serLine(l []byte) {
 	for i := 0; i < len(l); i++ {
 		b := l[i]
@@ -980,6 +1001,18 @@ func (p *TextileParser) serLines(lines [][]byte) {
 	}
 }
 
+func (p *TextileParser) finishListIfNecessary() {
+	if p.olListBuf == nil {
+		return
+	}
+	listBuf := p.out
+	p.out = p.olListBuf
+	p.olListBuf = nil
+	p.out.WriteString("\t<ol>")
+	p.out.Write(listBuf.Bytes())
+	p.out.WriteString("\n\t</ol>")
+}
+
 func (p *TextileParser) serParagraph(lines [][]byte) {
 	if len(lines) > 0 {
 		l := lines[0]
@@ -992,7 +1025,17 @@ func (p *TextileParser) serParagraph(lines [][]byte) {
 			}
 			return
 		}
+
+		if rest := parseOl(l); rest != nil {
+			p.serOl(rest)
+			if len(lines) > 1 {
+				p.serParagraph(lines[1:])
+			}
+			return
+		}
+		p.finishListIfNecessary()
 	}
+
 	if len(lines) == 1 {
 		l := lines[0]
 		if rest := isNoTextile(l); rest != nil {
@@ -1039,6 +1082,7 @@ func (p *TextileParser) serParagraphs(paragraphs [][][]byte) {
 		} else {
 			p.serParagraph(para)
 		}
+		p.finishListIfNecessary()
 		if i != len(paragraphs)-1 {
 			p.out.Write(newline)
 		}

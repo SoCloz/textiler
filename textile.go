@@ -522,36 +522,48 @@ func byteConcat(b1, b2 []byte) []byte {
 	return append(b1, b2...)
 }
 
+func parseStyle(l []byte) (rest, style []byte) {
+	if len(l) < 1 {
+		return l, nil
+	}
+	c := l[0]
+	if c == '<' {
+		if len(l) > 1 && l[1] == '>' {
+			return l[2:], []byte("text-align:justify")
+		}
+		return l[1:], []byte("text-align:left")
+	}
+	if c == '>' {
+		return l[1:], []byte("text-align:right")
+	}
+	if c == '=' {
+		return l[1:], []byte("text-align:center")
+	}
+	if c == '(' {
+		return l[1:], []byte("padding-left:1em")
+	}
+	return l, nil
+}
+
 // p($classOpt){$styleOpt}[$langOpt]. $rest
-func isP(l []byte) (rest, classOpt, styleOpt, langOpt []byte) {
+func parseP(l []byte) (rest, classOpt, styleOpt, langOpt []byte) {
 	if !startsWithByte(l, 'p', 3) {
 		return nil, nil, nil, nil
 	}
-	// TODO: can those be in arbitrary order? If yes, I need to retry
 	l = l[1:]
-	var styleAlign []byte
-	if l[0] == '<' {
-		if l[1] == '>' {
-			l = l[2:]
-			styleAlign = []byte("text-align:justify")
-		} else {
-			l = l[1:]
-			styleAlign = []byte("text-align:left")
-		}
-	} else if l[0] == '>' {
-		l = l[1:]
-		styleAlign = []byte("text-align:right")
-	} else if l[0] == '=' {
-		l = l[1:]
-		styleAlign = []byte("text-align:center")
-	}
+	// TODO: can those be in arbitrary order? If yes, I need to retry
 	l, classOpt = extractClassOpt(l)
 	l, styleOpt = extractStyleOpt(l)
 	l, langOpt = extractLangOpt(l)
+
+	// note: this must be after extractClassOpt(), since they both parse
+	// '(', but parseStyle() does that unconditionally.
+	l, style := parseStyle(l)
+
 	if len(l) < 2 || l[0] != '.' || l[1] != ' ' {
 		return nil, nil, nil, nil
 	}
-	style := byteConcat(styleAlign, styleOpt)
+	style = byteConcat(style, styleOpt)
 	return l[2:], classOpt, style, langOpt
 }
 
@@ -896,7 +908,7 @@ func (p *TextileParser) serParagraph(lines [][]byte) {
 			p.serNoTextile(rest)
 			return
 		}
-		if rest, classOpt, styleOpt, langOpt := isP(l); rest != nil {
+		if rest, classOpt, styleOpt, langOpt := parseP(l); rest != nil {
 			p.serP(rest, classOpt, styleOpt, langOpt)
 			return
 		}

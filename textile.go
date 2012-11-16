@@ -522,6 +522,26 @@ func byteConcat(b1, b2 []byte) []byte {
 	return append(b1, b2...)
 }
 
+func parsePadding(l []byte) (rest, style []byte) {
+	if len(l) < 1 {
+		return l, nil
+	}
+	if l[0] != '(' {
+		return l, nil
+	}
+	n := 1
+	l = l[1:]
+	for len(l) > 0 {
+		if l[0] != '(' {
+			break
+		}
+		n += 1
+		l = l[1:]
+	}
+	s := fmt.Sprintf("padding-left:%dem", n)
+	return l, []byte(s)
+}
+
 func parseStyle(l []byte) (rest, style []byte) {
 	if len(l) < 1 {
 		return l, nil
@@ -539,10 +559,7 @@ func parseStyle(l []byte) (rest, style []byte) {
 	if c == '=' {
 		return l[1:], []byte("text-align:center")
 	}
-	if c == '(' {
-		return l[1:], []byte("padding-left:1em")
-	}
-	return l, nil
+	return parsePadding(l)
 }
 
 // p($classOpt){$styleOpt}[$langOpt]. $rest

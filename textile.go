@@ -536,6 +536,9 @@ func isP(l []byte) (rest, classOpt, styleOpt, langOpt []byte) {
 	} else if l[0] == '>' {
 		l = l[1:]
 		styleAlign = []byte("text-align:right;")
+	} else if l[0] == '=' {
+		l = l[1:]
+		styleAlign = []byte("text-align:center;")
 	}
 	l, classOpt = extractClassOpt(l)
 	l, styleOpt = extractStyleOpt(l)

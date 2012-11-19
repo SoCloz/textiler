@@ -602,7 +602,7 @@ func parseH(l []byte) (rest []byte, level int, attrs *AttributesOpt) {
 
 // TODO: this is more complex
 func isUrlEnd(b byte) bool {
-	i := bytes.IndexByte([]byte{' ', '!'}, b)
+	i := bytes.IndexByte([]byte{' ', '!', ')'}, b)
 	return i != -1
 }
 
@@ -702,6 +702,11 @@ func parseNoTextile(l []byte) (rest []byte) {
 // bq. $rest
 func parseBlockQuote(l []byte) (rest []byte) {
 	return startsWith(l, []byte("bq. "))
+}
+
+// pre.. $rest
+func parsePre(l []byte) (rest []byte) {
+	return startsWith(l, []byte("pre.. "))
 }
 
 // p($classOpt){$styleOpt}[$langOpt]. $rest
@@ -945,6 +950,12 @@ func (p *TextileParser) serP(s []byte, attrs *AttributesOpt) {
 	p.out.WriteString(fmt.Sprintf("\t<p%s>%s</p>", attrsStr, string(s)))
 }
 
+func (p *TextileParser) serPre(s []byte) {
+	p.out.WriteString(fmt.Sprintf("<pre>"))
+	p.parseInline(s)
+	p.out.WriteString(fmt.Sprintf("</pre>"))
+}
+
 func (p *TextileParser) serBlockQuote(s []byte) {
 	p.out.WriteString("\t<blockquote>\n\t")
 	p.serP(s, nil)
@@ -1168,6 +1179,10 @@ func (p *TextileParser) parseBlock2(l []byte) (parsed bool) {
 			return
 		}
 	case 'p':
+		if rest := parsePre(l); rest != nil {
+			p.serPre(rest)
+			return
+		}
 		if rest, attrs := parseP(l); rest != nil {
 			p.serP(rest, attrs)
 			return

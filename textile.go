@@ -947,7 +947,9 @@ func serLangOpt(s []byte) string {
 
 func (p *TextileParser) serP(s []byte, attrs *AttributesOpt) {
 	attrsStr := serAttributesOpt(attrs)
-	p.out.WriteString(fmt.Sprintf("\t<p%s>%s</p>", attrsStr, string(s)))
+	p.out.WriteString(fmt.Sprintf("\t<p%s>", attrsStr))
+	p.serEscapedInContext(s)
+	p.out.WriteString("</p>")
 }
 
 func (p *TextileParser) serPre(s []byte) {

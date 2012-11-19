@@ -168,12 +168,33 @@ func TestTextileHtml(t *testing.T) {
 	}
 }
 
+func TestOl(t *testing.T) {
+	ols := []struct {
+		Str   string
+		Rest  string
+		Level int
+	}{
+		{"# ", "", 1},
+	}
+	for _, test := range ols {
+		res, level := parseOl([]byte(test.Str))
+		if test.Rest != string(res) {
+			t.Fatalf("\nSrc:%#v\n\nExp:%#v\n\nGot:%#v\n", test.Str, test.Rest, res)
+		}
+		if test.Level != level {
+			t.Fatalf("\nSrc:%#v\n\nExp:%#v\n\nGot:%#v\n", test.Str, test.Level, level)
+		}
+	}
+
+}
+
 func TestTextileXhtml(t *testing.T) {
 	// TODO: for now mark tests that we expect to pass explicitly
 	// 4,5,6,7,8,9,10 - smartypants for '"'
 	passingTests := []int{0, 1, 2, 3, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
 		21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-		39, 40, 41, 42, 43, 44}
+		39, 40, 41, 42, 43, 45}
+	// 44
 	//fmt.Printf("%d xhtml tests\n", len(XhtmlTests) / 2)
 	for _, i := range passingTests {
 		s := XhtmlTests[i*2]

@@ -37,9 +37,10 @@ type TextileParser struct {
 
 	// if we're parsing <ol> list, this tells us current nesting level
 	olLevel int
+	ulLevel int
 
-	blockLineNo int
-	blockTags []string
+	blockLineNo    int
+	blockTags      []string
 	dumpLines      bool
 	dumpParagraphs bool
 }
@@ -64,7 +65,7 @@ func (p *TextileParser) lastBlockTagIs(tag string) bool {
 	if len(p.blockTags) == 0 {
 		return false
 	}
-	last := p.blockTags[len(p.blockTags) - 1]
+	last := p.blockTags[len(p.blockTags)-1]
 	return last == tag
 }
 
@@ -73,7 +74,7 @@ func (p *TextileParser) popBlockTag(tag string) bool {
 		return false
 	}
 	if p.lastBlockTagIs(tag) {
-		p.blockTags = p.blockTags[0:len(p.blockTags) - 1]
+		p.blockTags = p.blockTags[0 : len(p.blockTags)-1]
 		return true
 	}
 	return false
@@ -101,9 +102,9 @@ func (r *TextileRenderer) isXhtml() bool {
 
 func NewTextileParser(renderer TextileRenderer) *TextileParser {
 	return &TextileParser{
-		r:    renderer,
-		refs: make(map[string]*UrlRef),
-		out:  new(bytes.Buffer),
+		r:         renderer,
+		refs:      make(map[string]*UrlRef),
+		out:       new(bytes.Buffer),
 		blockTags: make([]string, 0),
 	}
 }
@@ -414,7 +415,7 @@ func parseStrongWithOptStyle(l []byte) (rest, inside, styleOpt []byte) {
 	l = l[1:]
 	l, styleOpt = extractStyleOpt(l)
 	rest, inside = extractUntil(l, '*')
-	return rest,inside, styleOpt
+	return rest, inside, styleOpt
 }
 
 func isChar(c byte) bool {
@@ -529,7 +530,6 @@ func parseEmWithOptClass(l []byte) (rest, inside, classOpt []byte) {
 func parseCode(l []byte) (rest, inside []byte) {
 	return extractInside(l, '@', '@')
 }
-
 
 // -$inside-$rest
 func parseDel(l []byte) (rest, inside []byte) {
@@ -944,21 +944,51 @@ func (p *TextileParser) serH(rest []byte, n int, attrs *AttributesOpt) {
 }
 
 func parseOl(l []byte) (rest []byte, level int) {
-	if !startsWithByte(l, '#', 2) || l[1] != ' ' {
-		return nil, 0
+	for level, c := range l {
+		if c != '#' {
+			if c == ' ' && level > 0 {
+				return l[level+1:], level
+			}
+			return nil, 0
+		}
 	}
-	return l[2:], 1
+	return nil, 0
+}
+
+func parseUl(l []byte) (rest []byte, level int) {
+	for level, c := range l {
+		if c != '*' {
+			if c == ' ' && level > 0 {
+				return l[level+1:], level
+			}
+			return nil, 0
+		}
+	}
+	return nil, 0
 }
 
 func (p *TextileParser) closeOlIfNecessary() {
 	for p.olLevel > 0 {
 		p.olLevel -= 1
 		// TODO: write me
+		p.out.WriteString("</li>\n")
 		p.out.WriteString("\t</ol>")
 	}
 }
 
+func (p *TextileParser) closeUlIfNecessary() {
+	for p.ulLevel > 0 {
+		p.ulLevel -= 1
+		// TODO: write me
+		p.out.WriteString("</li>\n")
+		p.out.WriteString("\t</ul>")
+	}
+}
+
 func (p *TextileParser) serOl(l []byte, level int) {
+	if p.olLevel > 0 {
+		p.out.WriteString("</li>\n")
+	}
 	if level > p.olLevel {
 		n := level - p.olLevel
 		for n > 0 {
@@ -969,7 +999,22 @@ func (p *TextileParser) serOl(l []byte, level int) {
 	p.olLevel = level
 	p.out.WriteString("\t\t<li>")
 	p.parseInline(l)
-	p.out.WriteString("</li>\n")
+}
+
+func (p *TextileParser) serUl(l []byte, level int) {
+	if p.ulLevel > 0 {
+		p.out.WriteString("</li>\n")
+	}
+	if level > p.ulLevel {
+		n := level - p.ulLevel
+		for n > 0 {
+			p.out.WriteString("\t<ul>\n")
+			n -= 1
+		}
+	}
+	p.ulLevel = level
+	p.out.WriteString("\t\t<li>")
+	p.parseInline(l)
 }
 
 func (p *TextileParser) parseInline(l []byte) {
@@ -1129,9 +1174,15 @@ func (p *TextileParser) parseBlock(l []byte) {
 			p.serOl(rest, level)
 			return
 		}
+	case '*':
+		if rest, level := parseUl(l); rest != nil {
+			p.serUl(rest, level)
+			return
+		}
 	}
 
-	p.closeOlIfNecessary();
+	p.closeOlIfNecessary()
+	p.closeUlIfNecessary()
 	if p.inHtmlCode() {
 		p.startNewLine()
 		p.serAsHtmlCode(l)
@@ -1193,7 +1244,8 @@ func (p *TextileParser) toHtml(d []byte) []byte {
 	for _, l := range lines {
 		p.parseBlock(l)
 	}
-	p.closeOlIfNecessary();
+	p.closeOlIfNecessary()
+	p.closeUlIfNecessary()
 	p.closeP()
 	res := p.out.Bytes()
 	return bytes.TrimRight(res, "\n")

@@ -868,9 +868,14 @@ func (p *TextileParser) serImg(before []byte, imgSrc []byte, alt []byte, style i
 		styleStr = ` style="float: right;"`
 	}
 	if len(alt) > 0 {
-		p.out.WriteString(fmt.Sprintf(`<img src="%s"%s title="%s" alt="%s">`, string(imgSrc), styleStr, altStr, altStr))
+		p.out.WriteString(fmt.Sprintf(`<img src="%s"%s title="%s" alt="%s"`, string(imgSrc), styleStr, altStr, altStr))
 	} else {
-		p.out.WriteString(fmt.Sprintf(`<img src="%s"%s alt="">`, string(imgSrc), styleStr))
+		p.out.WriteString(fmt.Sprintf(`<img src="%s"%s alt=""`, string(imgSrc), styleStr))
+	}
+	if p.r.isXhtml() {
+		p.out.WriteString(" />")
+	} else {
+		p.out.WriteString(">")
 	}
 	if len(url) > 0 {
 		p.out.WriteString("</a>")

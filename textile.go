@@ -270,11 +270,7 @@ func extractInside(l []byte, start, end byte) (rest, inside []byte) {
 	if len(l) == 0 || l[0] != start {
 		return nil, nil
 	}
-	rest, inside = extractUntil(l[1:], end)
-	if rest == nil {
-		return nil, nil
-	}
-	return rest, inside
+	return extractUntil(l[1:], end)
 }
 
 func startsWithByte(s []byte, b byte, minLen int) bool {

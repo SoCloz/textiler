@@ -35,8 +35,8 @@ type TextileParser struct {
 	// TODO: this should be in TextileRenderer but for now it's ok
 	out *bytes.Buffer
 
-	// if we're parsing <ol> list, this keeps the previous buffer
-	olListBuf *bytes.Buffer
+	// if we're parsing <ol> list, this tells us current nesting level
+	olLevel int
 
 	blockLineNo int
 	blockTags []string
@@ -943,23 +943,34 @@ func (p *TextileParser) serH(rest []byte, n int, attrs *AttributesOpt) {
 	p.out.WriteString(fmt.Sprintf("</h%d>", n))
 }
 
-func parseOl(l []byte) []byte {
+func parseOl(l []byte) (rest []byte, level int) {
 	if !startsWithByte(l, '#', 2) || l[1] != ' ' {
-		return nil
+		return nil, 0
 	}
-	return l[2:]
+	return l[2:], 1
 }
 
-/*
-func (p *TextileParser) serOl(l []byte) {
-	if p.olListBuf == nil {
-		p.olListBuf = p.out
-		p.out = new(bytes.Buffer)
+func (p *TextileParser) closeOlIfNecessary() {
+	for p.olLevel > 0 {
+		p.olLevel -= 1
+		// TODO: write me
+		p.out.WriteString("\t</ol>")
 	}
-	p.out.WriteString("\n\t\t<li>")
-	p.serLine(l)
-	p.out.WriteString("</li>")
-}*/
+}
+
+func (p *TextileParser) serOl(l []byte, level int) {
+	if level > p.olLevel {
+		n := level - p.olLevel
+		for n > 0 {
+			p.out.WriteString("\t<ol>\n")
+			n -= 1
+		}
+	}
+	p.olLevel = level
+	p.out.WriteString("\t\t<li>")
+	p.parseInline(l)
+	p.out.WriteString("</li>\n")
+}
 
 func (p *TextileParser) parseInline(l []byte) {
 	for i := 0; i < len(l); i++ {
@@ -1044,18 +1055,6 @@ func (p *TextileParser) parseInline(l []byte) {
 	p.serEscaped(l)
 }
 
-func (p *TextileParser) finishListIfNecessary() {
-	if p.olListBuf == nil {
-		return
-	}
-	listBuf := p.out
-	p.out = p.olListBuf
-	p.olListBuf = nil
-	p.out.WriteString("\t<ol>")
-	p.out.Write(listBuf.Bytes())
-	p.out.WriteString("\n\t</ol>")
-}
-
 func (p *TextileParser) startNewLine() {
 	if p.inHtmlBlock() {
 		if p.blockLineNo > 1 {
@@ -1125,8 +1124,14 @@ func (p *TextileParser) parseBlock(l []byte) {
 			p.serBlockQuote(rest)
 			return
 		}
+	case '#':
+		if rest, level := parseOl(l); rest != nil {
+			p.serOl(rest, level)
+			return
+		}
 	}
 
+	p.closeOlIfNecessary();
 	if p.inHtmlCode() {
 		p.startNewLine()
 		p.serAsHtmlCode(l)
@@ -1135,24 +1140,6 @@ func (p *TextileParser) parseBlock(l []byte) {
 	p.startNewLine()
 	p.parseInline(l)
 }
-
-/*
-func (p *TextileParser) serParagraph(lines [][]byte) {
-	if len(lines) > 0 {
-		l := lines[0]
-		//fmt.Printf("serParagraph(): %s\n", string(l))
-
-		if rest := parseOl(l); rest != nil {
-			p.serOl(rest)
-			if len(lines) > 1 {
-				p.serParagraph(lines[1:])
-			}
-			return
-		}
-		p.finishListIfNecessary()
-	}
-}
-*/
 
 func dumpLines(lines [][]byte, out *bytes.Buffer) {
 	for _, l := range lines {
@@ -1206,6 +1193,7 @@ func (p *TextileParser) toHtml(d []byte) []byte {
 	for _, l := range lines {
 		p.parseBlock(l)
 	}
+	p.closeOlIfNecessary();
 	p.closeP()
 	res := p.out.Bytes()
 	return bytes.TrimRight(res, "\n")

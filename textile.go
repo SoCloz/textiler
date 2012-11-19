@@ -630,8 +630,17 @@ func extractUrlOrRefName(l []byte) (rest, urlOrRef []byte) {
 		// TODO: hackish. Probably should test l[:i] against a list
 		// of known refs
 		if isUrlEnd(c) {
+			// TODO: hack, if url ends with ".", don't count it as part of url
+			if i > 0 && l[i-1] == '.' {
+				i -= 1
+			}
 			return l[i:], l[:i]
 		}
+	}
+	// TODO: hack, if url ends with ".", don't count it as part of url
+	i := len(l) - 1
+	if i > 0 && l[i] == '.' {
+		return l[i:], l[:i]
 	}
 	return l[0:0], l
 }

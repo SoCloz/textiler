@@ -194,7 +194,7 @@ func TestTextileXhtml(t *testing.T) {
 	passingTests := []int{0, 1, 2, 3, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
 		21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
 		39, 40, 41, 42, 43, 45, 46, 48, 50, 51, 52, 53, 54, 62, 64, 66, 68, 69,
-		70, 74, 75, 76, 78}
+		70, 74, 75, 76, 78, 79}
 	// 44, 47, 65 - nested lists
 	// 49 - "foo (title)":http://my.com - parsing (title) and serializing as title="" attribute
 	// 55 - use CSS(Acronyms) - parsing acronyms in ()
@@ -206,7 +206,6 @@ func TestTextileXhtml(t *testing.T) {
 	// 71 - *:(foo)foo bar baz* - <cite> withing '*' (strong)
 	// 73 - leading spaces don't induce <p>
 	// 77 - H[~2~]O - is supposed to drop [] for some reason
-	// 78 - convert ' to &#8217;
 	for _, i := range passingTests {
 		s := XhtmlTests[i*2]
 		actual := textileToXhtml(s)

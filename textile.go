@@ -3,6 +3,7 @@ package textiler
 import (
 	"bytes"
 	"fmt"
+	"unicode/utf8"
 )
 
 const (
@@ -943,26 +944,21 @@ func (p *TextileParser) serH(rest []byte, n int, attrs *AttributesOpt) {
 	p.out.WriteString(fmt.Sprintf("</h%d>", n))
 }
 
-func parseOl(l []byte) (rest []byte, level int) {
-	for level, c := range l {
-		if c != '#' {
-			if c == ' ' && level > 0 {
-				return l[level+1:], level
+func parseListEl(l []byte, r rune) (rest []byte, level int) {
+	level = 0
+	for {
+		rune, size := utf8.DecodeRune(l)
+		if rune == utf8.RuneError {
+			return nil, 0
+		}
+		if rune != r {
+			if rune == ' ' && level > 0 {
+				return l[1:], level
 			}
 			return nil, 0
 		}
-	}
-	return nil, 0
-}
-
-func parseUl(l []byte) (rest []byte, level int) {
-	for level, c := range l {
-		if c != '*' {
-			if c == ' ' && level > 0 {
-				return l[level+1:], level
-			}
-			return nil, 0
-		}
+		level += 1
+		l = l[size:]
 	}
 	return nil, 0
 }
@@ -1127,15 +1123,13 @@ func (p *TextileParser) closeP() {
 	p.out.WriteString("\n\n")
 }
 
-func (p *TextileParser) parseBlock(l []byte) {
-	if len(l) == 0 {
-		p.closeP()
-		p.blockLineNo = 0
-		return
+func (p *TextileParser) parseBlock2(l []byte) (parsed bool) {
+	rune, _ := utf8.DecodeRune(l)
+	if rune == utf8.RuneError {
+		return false
 	}
-	p.blockLineNo += 1
-	b := l[0]
-	switch b {
+	parsed = true
+	switch rune {
 	case 'h':
 		if rest, n, attrs := parseH(l); n != -1 {
 			p.serH(rest, n, attrs)
@@ -1170,15 +1164,34 @@ func (p *TextileParser) parseBlock(l []byte) {
 			return
 		}
 	case '#':
-		if rest, level := parseOl(l); rest != nil {
+		if rest, level := parseListEl(l, '#'); rest != nil {
 			p.serOl(rest, level)
 			return
 		}
 	case '*':
-		if rest, level := parseUl(l); rest != nil {
+		if rest, level := parseListEl(l, '*'); rest != nil {
 			p.serUl(rest, level)
 			return
 		}
+	case '•':
+		if rest, level := parseListEl(l, '•'); rest != nil {
+			p.serUl(rest, level)
+			return
+		}
+	}
+	return false
+}
+
+func (p *TextileParser) parseBlock(l []byte) {
+	if len(l) == 0 {
+		p.closeP()
+		p.blockLineNo = 0
+		return
+	}
+	p.blockLineNo += 1
+
+	if p.parseBlock2(l) {
+		return
 	}
 
 	p.closeOlIfNecessary()

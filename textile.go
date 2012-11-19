@@ -6,6 +6,9 @@ import (
 	"unicode/utf8"
 )
 
+// TODO: a notion of extended block (e.g. pre..) which lasts until the next
+// block starts
+
 const (
 	// renderer flags
 	RENDERER_XHTML = 1 << iota
@@ -23,17 +26,16 @@ type UrlRef struct {
 }
 
 type TextileRenderer struct {
-	flags int
 }
 
 type TextileParser struct {
-	r    TextileRenderer
+	flags int
+
 	refs map[string]*UrlRef
 
 	// are we inside <p> tag?
 	inP bool
 
-	// TODO: this should be in TextileRenderer but for now it's ok
 	out *bytes.Buffer
 
 	// if we're parsing <ol> list, this tells us current nesting level
@@ -93,17 +95,17 @@ func (p *TextileParser) inHtmlBlock() bool {
 	return len(p.blockTags) > 0
 }
 
-func (r *TextileRenderer) isFlagSet(flag int) bool {
-	return r.flags&flag != 0
+func (p *TextileParser) isFlagSet(flag int) bool {
+	return p.flags&flag != 0
 }
 
-func (r *TextileRenderer) isXhtml() bool {
-	return r.isFlagSet(RENDERER_XHTML)
+func (p *TextileParser) isXhtml() bool {
+	return p.isFlagSet(RENDERER_XHTML)
 }
 
-func NewTextileParser(renderer TextileRenderer) *TextileParser {
+func NewParser(flags int) *TextileParser {
 	return &TextileParser{
-		r:         renderer,
+		flags:     flags,
 		refs:      make(map[string]*UrlRef),
 		out:       new(bytes.Buffer),
 		blockTags: make([]string, 0),
@@ -704,6 +706,11 @@ func parseBlockQuote(l []byte) (rest []byte) {
 	return startsWith(l, []byte("bq. "))
 }
 
+// ###. $rest
+func parseComment(l []byte) (rest []byte) {
+	return startsWith(l, []byte("###. "))
+}
+
 // pre.. $rest
 func parsePre(l []byte) (rest []byte) {
 	return startsWith(l, []byte("pre.. "))
@@ -733,6 +740,8 @@ func needsHtmlCodeEscaping(b byte) []byte {
 		return []byte("&lt;")
 	case '>':
 		return []byte("&gt;")
+	case '\'':
+		return []byte("&#8217;")
 	}
 	return nil
 }
@@ -806,7 +815,7 @@ func (p *TextileParser) serTagEnd(tag string) {
 }
 
 func (p *TextileParser) serTag(tag string, before, inside, rest []byte) {
-	p.serEscaped(before)
+	p.serAsHtmlCode(before)
 	p.serTagStartWithOptClass(tag, nil)
 	p.parseInline(inside)
 	p.serTagEnd(tag)
@@ -814,7 +823,7 @@ func (p *TextileParser) serTag(tag string, before, inside, rest []byte) {
 }
 
 func (p *TextileParser) serTagWithOptClass(tag string, before, inside, class, rest []byte) {
-	p.out.Write(before) // TODO: escaped?
+	p.serAsHtmlCode(before)
 	p.serTagStartWithOptClass(tag, class)
 	p.parseInline(inside)
 	p.serTagEnd(tag)
@@ -877,7 +886,7 @@ func (p *TextileParser) serImg(before []byte, imgSrc []byte, alt []byte, style i
 	} else {
 		p.out.WriteString(fmt.Sprintf(`<img src="%s"%s alt=""`, string(imgSrc), styleStr))
 	}
-	if p.r.isXhtml() {
+	if p.isXhtml() {
 		p.out.WriteString(" />")
 	} else {
 		p.out.WriteString(">")
@@ -1120,7 +1129,9 @@ func (p *TextileParser) parseInline(l []byte) {
 			}
 		}
 	}
-	p.serEscaped(l)
+	p.serAsHtmlCode(l)
+	//p.serEscapedInContext(l)
+	//p.serEscaped(l)
 }
 
 func (p *TextileParser) startNewLine() {
@@ -1134,7 +1145,7 @@ func (p *TextileParser) startNewLine() {
 		p.out.WriteString("\t<p>")
 		p.inP = true
 	} else {
-		if p.r.isXhtml() {
+		if p.isXhtml() {
 			p.out.WriteString("<br />\n")
 		} else {
 			p.out.WriteString("<br>\n")
@@ -1150,7 +1161,7 @@ func (p *TextileParser) closeP() {
 	p.out.WriteString("\n\n")
 }
 
-func (p *TextileParser) parseBlock2(l []byte) (parsed bool) {
+func (p *TextileParser) parseBlockStart(l []byte) (parsed bool) {
 	rune, _ := utf8.DecodeRune(l)
 	if rune == utf8.RuneError {
 		return false
@@ -1195,6 +1206,10 @@ func (p *TextileParser) parseBlock2(l []byte) (parsed bool) {
 			return
 		}
 	case '#':
+		// TODO: not fully correct
+		if rest := parseComment(l); rest != nil {
+			return
+		}
 		if rest, level := parseListEl(l, '#'); rest != nil {
 			p.serOl(rest, level)
 			return
@@ -1221,7 +1236,7 @@ func (p *TextileParser) parseBlock(l []byte) {
 	}
 	p.blockLineNo += 1
 
-	if p.parseBlock2(l) {
+	if p.parseBlockStart(l) {
 		return
 	}
 
@@ -1295,23 +1310,15 @@ func (p *TextileParser) toHtml(d []byte) []byte {
 	return bytes.TrimRight(res, "\n")
 }
 
-func NewParserWithRenderer(isXhtml bool) *TextileParser {
-	r := TextileRenderer{}
-	if isXhtml {
-		r.flags = RENDERER_XHTML
-	}
-	return NewTextileParser(r)
-}
-
 func ToHtml(d []byte, dumpLines, dumpParagraphs bool) []byte {
-	p := NewParserWithRenderer(false)
+	p := NewParser(0)
 	p.dumpLines = dumpLines
 	p.dumpParagraphs = dumpParagraphs
 	return p.toHtml(d)
 }
 
 func ToXhtml(d []byte, dumpLines, dumpParagraphs bool) []byte {
-	p := NewParserWithRenderer(true)
+	p := NewParser(RENDERER_XHTML)
 	p.dumpLines = dumpLines
 	p.dumpParagraphs = dumpParagraphs
 	return p.toHtml(d)

@@ -124,7 +124,7 @@ func TestParseInline(t *testing.T) {
 		`bef@bar@after`, "bef<code>bar</code>after",
 	}
 	for i := 0; i < len(data)/2; i++ {
-		p := NewParserWithRenderer(false)
+		p := NewParser(0)
 		s := data[i*2]
 		p.parseInline([]byte(s))
 		expected := []byte(data[i*2+1])
@@ -185,7 +185,6 @@ func TestOl(t *testing.T) {
 			t.Fatalf("\nSrc:%#v\n\nExp:%#v\n\nGot:%#v\n", test.Str, test.Level, level)
 		}
 	}
-
 }
 
 func TestTextileXhtml(t *testing.T) {
@@ -195,10 +194,10 @@ func TestTextileXhtml(t *testing.T) {
 		21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
 		39, 40, 41, 42, 43, 45, 46, 48, 50, 51, 52, 53, 54, 62, 64, 66, 68, 69,
 		70, 74, 75, 76, 78, 79}
-	// 44, 47, 65 - nested lists
+	// 44, 47, 65, 94 - lists
 	// 49 - "foo (title)":http://my.com - parsing (title) and serializing as title="" attribute
-	// 55 - use CSS(Acronyms) - parsing acronyms in ()
-	// 56, 57, 58, 59 - parsing tables
+	// 55, 83 - use CSS(Acronyms) - parsing acronyms in ()
+	// 56, 57, 58, 59, 88, 89, 95, 96, 97, 98 - tables
 	// 60, 72 - pre..
 	// 61 - <pre>foo</pre>
 	// 63 - "foo ==(bar)==":#foobar
@@ -206,6 +205,15 @@ func TestTextileXhtml(t *testing.T) {
 	// 71 - *:(foo)foo bar baz* - <cite> withing '*' (strong)
 	// 73 - leading spaces don't induce <p>
 	// 77 - H[~2~]O - is supposed to drop [] for some reason
+	// 80, 81, 82 - smart quotes
+	// 84 - Textpattern CMS - auto-dected all caps (CMS) and put inside <span style="caps">CMS</span>
+	// 85 - url-escape urls (Ü => %C3%9Cb)
+	// 86 - <-- comments
+	// 87 - (c) => &#169;, (r) => #174;, (tm) => &#8482
+	// 90, 91, 99, 101 - dl, dt
+	// 92 - *(class) - class in *
+	// 93 - #_(first#list) foo - class/id for lists
+	// 100 - ###. comment
 	for _, i := range passingTests {
 		s := XhtmlTests[i*2]
 		actual := textileToXhtml(s)

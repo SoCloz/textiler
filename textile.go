@@ -264,6 +264,23 @@ func extractUntil(l []byte, c byte) (rest, inside []byte) {
 	return l[idx+1:], l[:idx]
 }
 
+var pnct = []byte(".,\"'?!;:(")
+
+func extractUntil2(l []byte, c byte) (rest, inside []byte) {
+	idx := bytes.IndexByte(l, c)
+	if idx == -1 {
+		return nil, nil
+	}
+	rest, inside = l[idx+1:], l[:idx]
+	for _, c := range inside {
+		// TODO: use a bitmap
+		if bytes.IndexByte(pnct, c) != -1 {
+			return nil, nil
+		}
+	}
+	return rest, inside
+}
+
 // $start$inside$end$rest
 // e.g. '@foo@bar'
 func extractInside(l []byte, start, end byte) (rest, inside []byte) {
@@ -271,6 +288,15 @@ func extractInside(l []byte, start, end byte) (rest, inside []byte) {
 		return nil, nil
 	}
 	return extractUntil(l[1:], end)
+}
+
+// $start$inside$end$rest
+// e.g. '@foo@bar'
+func extractInside2(l []byte, start, end byte) (rest, inside []byte) {
+	if len(l) == 0 || l[0] != start {
+		return nil, nil
+	}
+	return extractUntil2(l[1:], end)
 }
 
 func startsWithByte(s []byte, b byte, minLen int) bool {
@@ -532,22 +558,22 @@ func parseCode(l []byte) (rest, inside []byte) {
 
 // -$inside-$rest
 func parseDel(l []byte) (rest, inside []byte) {
-	return extractInside(l, '-', '-')
+	return extractInside2(l, '-', '-')
 }
 
 // +$inside+$rest
 func parseIns(l []byte) (rest, inside []byte) {
-	return extractInside(l, '+', '+')
+	return extractInside2(l, '+', '+')
 }
 
 // ^$inside^$rest
 func parseSup(l []byte) (rest, inside []byte) {
-	return extractInside(l, '^', '^')
+	return extractInside2(l, '^', '^')
 }
 
 // ~$inside~$rest
 func parseSub(l []byte) (rest, inside []byte) {
-	return extractInside(l, '~', '~')
+	return extractInside2(l, '~', '~')
 }
 
 func is2Byte(l []byte, b byte) (rest, inside []byte) {
@@ -557,6 +583,7 @@ func is2Byte(l []byte, b byte) (rest, inside []byte) {
 	if l[0] != b || l[1] != b {
 		return nil, nil
 	}
+	// TODO: check for punctuation
 	for i := 2; i < len(l)-1; i++ {
 		if l[i] == b {
 			if l[i+1] == b {

@@ -110,9 +110,11 @@ func TestUrl(t *testing.T) {
 
 func TestParseInline(t *testing.T) {
 	data := []string{
+		"_TR()", "_TR()",
 		"__f__", "<i>f</i>",
 		"____", "<i></i>",
 		"____rest", "<i></i>rest",
+		"fo-not. me-", "fo-not. me-",
 		"before__ol__", "before<i>ol</i>",
 		"foo**bold**is here", "foo<b>bold</b>is here",
 		`"Hobix":http://hobix.com/`, `<a href="http://hobix.com/">Hobix</a>`,
@@ -202,7 +204,7 @@ func TestTextileXhtml(t *testing.T) {
 	// 61 - <pre>foo</pre>
 	// 63 - "foo ==(bar)==":#foobar
 	// 67 - #{color:blue} one - style for lists
-	// 71 - *:(foo)foo bar baz* - <cite> withing '*' (strong)
+	// 71 - *:(foo)foo bar baz* - <cite> within '*' (strong)
 	// 73 - leading spaces don't induce <p>
 	// 77 - H[~2~]O - is supposed to drop [] for some reason
 	// 80, 81, 82 - smart quotes

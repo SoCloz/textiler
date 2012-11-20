@@ -114,6 +114,7 @@ func TestParseInline(t *testing.T) {
 		"_TR()", "_TR()",
 		"__f__", "<i>f</i>",
 		"__b__", "<i>b</i>",
+		"__", "__",
 		"__r __", "__r __",
 		"__r__rest", "__r__rest",
 		"__r__ rest", "<i>r</i> rest",

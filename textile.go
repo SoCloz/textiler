@@ -277,9 +277,9 @@ func endsWithPuncOrSpace(l []byte) bool {
 	return bytes.IndexByte(pnctAndSpace, c) != -1
 }
 
-func isPnct(c byte) bool {
+func isPunctOrSpace(c byte) bool {
 	// TODO: speed up
-	return -1 != bytes.IndexByte(pnct, c)
+	return bytes.IndexByte(pnctAndSpace, c) != -1
 }
 
 // $start$inside$end$rest
@@ -992,14 +992,17 @@ func parseQtagInside(l []byte, qtag byte, two bool) (rest, inside []byte) {
 				continue
 			}
 			rest = rest[1:]
-		}
-		if len(rest) == 0 || isPnct(rest[0]) {
-			inside = l[:i]
-			if len(inside) == 0 || inside[len(inside)-1] == ' ' {
-				fmt.Printf("3:'%s' %v\n", string(inside), two)
+		} else {
+			if i == 0 {
+				// this is for cases like __r __
 				return nil, nil
 			}
-			fmt.Printf("rest='%s' inside='%s'\n", string(rest), string(inside))
+		}
+		if len(rest) == 0 || isPunctOrSpace(rest[0]) {
+			inside = l[:i]
+			if len(inside) == 0 || inside[len(inside)-1] == ' ' {
+				return nil, nil
+			}
 			return rest, inside
 		}
 	}
@@ -1029,7 +1032,6 @@ func (p *TextileParser) parseQtag2(before, rest []byte, qtag byte, tag string) b
 	}
 	rest = rest[1:]
 	rest, attrs := parseAttributesOpt(rest)
-	fmt.Printf("1'%s'\n", rest)
 	if rest, inside := parseQtagInside(rest, qtag, true); rest != nil {
 		p.serTag(tag, attrs, before, inside, rest)
 		return true

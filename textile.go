@@ -112,6 +112,9 @@ func NewParser(flags int) *TextileParser {
 	}
 }
 
+var pnct = []byte(".,'\"?!;:()")
+var pnctAndSpace = []byte(".,\"'?!;:() \t")
+
 func isValidTag(tag []byte) bool {
 	_, ok := blockTags[string(tag)]
 	return ok
@@ -264,21 +267,19 @@ func extractUntil(l []byte, c byte) (rest, inside []byte) {
 	return l[idx+1:], l[:idx]
 }
 
-var pnct = []byte(".,\"'?!;:(")
+func endsWithPuncOrSpace(l []byte) bool {
+	n := len(l)
+	if n == 0 {
+		return true
+	}
+	c := l[n-1]
+	// TODO: speed up
+	return bytes.IndexByte(pnctAndSpace, c) != -1
+}
 
-func extractUntil2(l []byte, c byte) (rest, inside []byte) {
-	idx := bytes.IndexByte(l, c)
-	if idx == -1 {
-		return nil, nil
-	}
-	rest, inside = l[idx+1:], l[:idx]
-	for _, c := range inside {
-		// TODO: use a bitmap
-		if bytes.IndexByte(pnct, c) != -1 {
-			return nil, nil
-		}
-	}
-	return rest, inside
+func isPnct(c byte) bool {
+	// TODO: speed up
+	return -1 != bytes.IndexByte(pnct, c)
 }
 
 // $start$inside$end$rest
@@ -288,15 +289,6 @@ func extractInside(l []byte, start, end byte) (rest, inside []byte) {
 		return nil, nil
 	}
 	return extractUntil(l[1:], end)
-}
-
-// $start$inside$end$rest
-// e.g. '@foo@bar'
-func extractInside2(l []byte, start, end byte) (rest, inside []byte) {
-	if len(l) == 0 || l[0] != start {
-		return nil, nil
-	}
-	return extractUntil2(l[1:], end)
 }
 
 func startsWithByte(s []byte, b byte, minLen int) bool {
@@ -395,7 +387,11 @@ type AttributesOpt struct {
 	lang  []byte
 }
 
+// ($classOpt){$styleOpt}[$langOpt]
 func parseAttributesOpt(l []byte) (rest []byte, attrs *AttributesOpt) {
+	if len(l) == 0 {
+		return l, nil
+	}
 	attrs = &AttributesOpt{}
 	if l[0] == '(' {
 		l, attrs.class = extractClassOpt(l)
@@ -430,17 +426,6 @@ func parseSpan(l []byte) (rest, inside []byte, attrs *AttributesOpt) {
 	l, attrs = parseAttributesOpt(l)
 	rest, inside = extractUntil(l, '%')
 	return rest, inside, attrs
-}
-
-// *{$styleOpt}$inside*$rest
-func parseStrongWithOptStyle(l []byte) (rest, inside, styleOpt []byte) {
-	if !startsWithByte(l, '*', 3) {
-		return nil, nil, nil
-	}
-	l = l[1:]
-	l, styleOpt = extractStyleOpt(l)
-	rest, inside = extractUntil(l, '*')
-	return rest, inside, styleOpt
 }
 
 func isChar(c byte) bool {
@@ -535,45 +520,9 @@ func extractLangOpt(l []byte) (rest, langOpt []byte) {
 	return l, nil
 }
 
-// _($classOpt)$inside_$rest
-func parseEmWithOptClass(l []byte) (rest, inside, classOpt []byte) {
-	if len(l) < 2 {
-		return nil, nil, nil
-	}
-	if l[0] != '_' {
-		return nil, nil, nil
-	}
-	l, classOpt = extractClassOpt(l[1:])
-	idx := bytes.IndexByte(l, '_')
-	if idx == -1 {
-		return nil, nil, nil
-	}
-	return l[idx+1:], l[:idx], classOpt
-}
-
 // @$inside@$rest
 func parseCode(l []byte) (rest, inside []byte) {
 	return extractInside(l, '@', '@')
-}
-
-// -$inside-$rest
-func parseDel(l []byte) (rest, inside []byte) {
-	return extractInside2(l, '-', '-')
-}
-
-// +$inside+$rest
-func parseIns(l []byte) (rest, inside []byte) {
-	return extractInside2(l, '+', '+')
-}
-
-// ^$inside^$rest
-func parseSup(l []byte) (rest, inside []byte) {
-	return extractInside2(l, '^', '^')
-}
-
-// ~$inside~$rest
-func parseSub(l []byte) (rest, inside []byte) {
-	return extractInside2(l, '~', '~')
 }
 
 func is2Byte(l []byte, b byte) (rest, inside []byte) {
@@ -811,54 +760,34 @@ func (p *TextileParser) serAsHtmlCode(l []byte) {
 	}
 }
 
-func (p *TextileParser) serTagStartWithOptClass(tag string, class []byte) {
-	p.out.WriteByte('<')
-	p.out.WriteString(tag)
-	if class == nil {
-		p.out.WriteByte('>')
-	} else {
-		p.out.WriteString(fmt.Sprintf(` class="%s">`, string(class)))
+// s is "$class[#$id]", we return ' class="$class" id="$id"'
+func serClassOrIdOpt(s []byte) string {
+	if s == nil || len(s) == 0 {
+		return ""
 	}
-}
-
-func (p *TextileParser) serTagStartWithOptStyle(tag string, style []byte) {
-	p.out.WriteByte('<')
-	p.out.WriteString(tag)
-	if style == nil {
-		p.out.WriteByte('>')
-	} else {
-		p.out.WriteString(fmt.Sprintf(` style="%s">`, string(style)))
+	idx := bytes.IndexByte(s, '#')
+	if -1 == idx {
+		return fmt.Sprintf(` class="%s"`, string(s))
 	}
+	if 0 == idx {
+		return fmt.Sprintf(` id="%s"`, string(s[1:]))
+	}
+	return fmt.Sprintf(` class="%s" id="%s"`, string(s[:idx]), string(s[idx+1:]))
 }
 
-func (p *TextileParser) serTagEnd(tag string) {
-	p.out.WriteString("</")
-	p.out.WriteString(tag)
-	p.out.WriteByte('>')
+func serStyleOpt(s []byte) string {
+	if s == nil || len(s) == 0 {
+		return ""
+	}
+	s = prettyPrintStyle(s)
+	return fmt.Sprintf(` style="%s"`, string(s))
 }
 
-func (p *TextileParser) serTag(tag string, before, inside, rest []byte) {
-	p.serAsHtmlCode(before)
-	p.serTagStartWithOptClass(tag, nil)
-	p.parseInline(inside)
-	p.serTagEnd(tag)
-	p.parseInline(rest)
-}
-
-func (p *TextileParser) serTagWithOptClass(tag string, before, inside, class, rest []byte) {
-	p.serAsHtmlCode(before)
-	p.serTagStartWithOptClass(tag, class)
-	p.parseInline(inside)
-	p.serTagEnd(tag)
-	p.parseInline(rest)
-}
-
-func (p *TextileParser) serTagWithOptStyle(tag string, before, inside, style, rest []byte) {
-	p.serEscaped(before)
-	p.serTagStartWithOptStyle(tag, style)
-	p.parseInline(inside)
-	p.serTagEnd(tag)
-	p.parseInline(rest)
+func serLangOpt(s []byte) string {
+	if s == nil || len(s) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(` lang="%s"`, string(s))
 }
 
 func serAttributesOpt(attrs *AttributesOpt) string {
@@ -871,6 +800,15 @@ func serAttributesOpt(attrs *AttributesOpt) string {
 	return s1 + s2 + s3
 }
 
+func (p *TextileParser) serTag(tag string, attrs *AttributesOpt, before, inside, rest []byte) {
+	p.serAsHtmlCode(before)
+	p.out.WriteString(fmt.Sprintf("<%s%s>", tag, serAttributesOpt(attrs)))
+	p.parseInline(inside)
+	p.out.WriteString(fmt.Sprintf("</%s>", tag))
+	p.parseInline(rest)
+}
+
+// TODO: change to serTag("span", ...) ?
 func (p *TextileParser) serSpan(before, inside []byte, attrs *AttributesOpt, rest []byte) {
 	p.serEscaped(before)
 	attrsStr := serAttributesOpt(attrs)
@@ -924,21 +862,6 @@ func (p *TextileParser) serNoTextile(s []byte) {
 	p.out.Write(s)
 }
 
-// s is "$class[#$id]", we return ' class="$class" id="$id"'
-func serClassOrIdOpt(s []byte) string {
-	if s == nil || len(s) == 0 {
-		return ""
-	}
-	idx := bytes.IndexByte(s, '#')
-	if -1 == idx {
-		return fmt.Sprintf(` class="%s"`, string(s))
-	}
-	if 0 == idx {
-		return fmt.Sprintf(` id="%s"`, string(s[1:]))
-	}
-	return fmt.Sprintf(` class="%s" id="%s"`, string(s[:idx]), string(s[idx+1:]))
-}
-
 func prettyPrintStyle(s []byte) []byte {
 	res := make([]byte, 0)
 	state := 0 // 0 - regular, 1 - after ';'
@@ -960,21 +883,6 @@ func prettyPrintStyle(s []byte) []byte {
 		res = append(res, ';')
 	}
 	return res
-}
-
-func serStyleOpt(s []byte) string {
-	if s == nil || len(s) == 0 {
-		return ""
-	}
-	s = prettyPrintStyle(s)
-	return fmt.Sprintf(` style="%s"`, string(s))
-}
-
-func serLangOpt(s []byte) string {
-	if s == nil || len(s) == 0 {
-		return ""
-	}
-	return fmt.Sprintf(` lang="%s"`, string(s))
 }
 
 func (p *TextileParser) serP(s []byte, attrs *AttributesOpt) {
@@ -1072,28 +980,101 @@ func (p *TextileParser) serUl(l []byte, level int) {
 	p.parseInline(l)
 }
 
+// find qtag (or two) followed by punctuation
+func parseQtagInside(l []byte, qtag byte, two bool) (rest, inside []byte) {
+	for i, c := range l {
+		if c != qtag {
+			continue
+		}
+		rest = l[i+1:]
+		if two {
+			if !startsWithByte(rest, qtag, 1) {
+				continue
+			}
+			rest = rest[1:]
+		}
+		if len(rest) == 0 || isPnct(rest[0]) {
+			inside = l[:i]
+			if len(inside) == 0 || inside[len(inside)-1] == ' ' {
+				fmt.Printf("3:'%s' %v\n", string(inside), two)
+				return nil, nil
+			}
+			fmt.Printf("rest='%s' inside='%s'\n", string(rest), string(inside))
+			return rest, inside
+		}
+	}
+	return nil, nil
+}
+
+func (p *TextileParser) parseQtag(before, rest []byte, qtag byte, tag string) bool {
+	if !endsWithPuncOrSpace(before) {
+		return false
+	}
+	rest = rest[1:] // we know the first byte is qtag
+	rest, attrs := parseAttributesOpt(rest)
+	if rest, inside := parseQtagInside(rest, qtag, false); rest != nil {
+		p.serTag(tag, attrs, before, inside, rest)
+		return true
+	}
+	return false
+}
+
+func (p *TextileParser) parseQtag2(before, rest []byte, qtag byte, tag string) bool {
+	if !endsWithPuncOrSpace(before) {
+		return false
+	}
+	rest = rest[1:] // we know the first byte is qtag
+	if !startsWithByte(rest, qtag, 1) {
+		return false
+	}
+	rest = rest[1:]
+	rest, attrs := parseAttributesOpt(rest)
+	//fmt.Printf("1'%s'\n", rest)
+	if rest, inside := parseQtagInside(rest, qtag, true); rest != nil {
+		p.serTag(tag, attrs, before, inside, rest)
+		return true
+	}
+	return false
+}
+
+var qtagToTag = map[byte]string{
+	'-': "del",
+	'+': "ins",
+	'^': "sup",
+	'~': "sub",
+}
+
 func (p *TextileParser) parseInline(l []byte) {
 	for i := 0; i < len(l); i++ {
 		b := l[i]
+
 		switch b {
+		case '-', '+', '^', '~':
+			if p.parseQtag(l[:i], l[i:], b, qtagToTag[b]) {
+				return
+			}
+
+		case '?':
+			if p.parseQtag2(l[:i], l[i:], b, "cite") {
+				return
+			}
+
 		case '_':
-			if rest, inside := parseItalic(l[i:]); rest != nil {
-				p.serTag("i", l[:i], inside, rest)
+			if p.parseQtag2(l[:i], l[i:], b, "i") {
 				return
 			}
-			if rest, inside, class := parseEmWithOptClass(l[i:]); rest != nil {
-				p.serTagWithOptClass("em", l[:i], inside, class, rest)
+			if p.parseQtag(l[:i], l[i:], b, "em") {
 				return
 			}
+
 		case '*':
-			if rest, inside := parseBold(l[i:]); rest != nil {
-				p.serTag("b", l[:i], inside, rest)
+			if p.parseQtag2(l[:i], l[i:], b, "b") {
 				return
 			}
-			if rest, inside, style := parseStrongWithOptStyle(l[i:]); rest != nil {
-				p.serTagWithOptStyle("strong", l[:i], inside, style, rest)
+			if p.parseQtag(l[:i], l[i:], b, "strong") {
 				return
 			}
+
 		case '"':
 			if rest, title, urlOrRefName := parseUrlOrRefName(l[i:]); rest != nil {
 				url := urlOrRefName
@@ -1103,51 +1084,30 @@ func (p *TextileParser) parseInline(l []byte) {
 				p.serUrl(l[:i], title, url, rest)
 				return
 			}
+
 		case '!':
 			if rest, url, imgSrc, alt, style := parseImg(l[i:]); rest != nil {
 				p.serImg(l[:i], imgSrc, alt, style, url, rest)
 				return
 			}
+
 		case '@':
 			if rest, inside := parseCode(l[i:]); rest != nil {
 				p.serCode(l[:i], inside, rest)
 				return
 			}
+
 		case '%':
 			if rest, inside, attrs := parseSpan(l[i:]); rest != nil {
 				p.serSpan(l[:i], inside, attrs, rest)
 				return
 			}
+
 		case '<':
 			if rest, html, _, _ := parseHtml(l[i:]); rest != nil {
 				p.parseInline(l[:i])
 				p.serEscapedInContext(html)
 				p.parseInline(rest)
-				return
-			}
-		case '?':
-			if rest, inside := parseCite(l[i:]); rest != nil {
-				p.serTag("cite", l[:i], inside, rest)
-				return
-			}
-		case '-':
-			if rest, inside := parseDel(l[i:]); rest != nil {
-				p.serTag("del", l[:i], inside, rest)
-				return
-			}
-		case '+':
-			if rest, inside := parseIns(l[i:]); rest != nil {
-				p.serTag("ins", l[:i], inside, rest)
-				return
-			}
-		case '^':
-			if rest, inside := parseSup(l[i:]); rest != nil {
-				p.serTag("sup", l[:i], inside, rest)
-				return
-			}
-		case '~':
-			if rest, inside := parseSub(l[i:]); rest != nil {
-				p.serTag("sub", l[:i], inside, rest)
 				return
 			}
 		}

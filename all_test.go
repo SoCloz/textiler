@@ -110,13 +110,16 @@ func TestUrl(t *testing.T) {
 
 func TestParseInline(t *testing.T) {
 	data := []string{
+		".-in me-", ".<del>in me</del>",
 		"_TR()", "_TR()",
 		"__f__", "<i>f</i>",
-		"____", "<i></i>",
-		"____rest", "<i></i>rest",
+		"__b__", "<i>b</i>",
+		"__r __", "__r __",
+		"__r__rest", "__r__rest",
+		"__r__ rest", "<i>r</i> rest",
 		"fo-not. me-", "fo-not. me-",
-		"before__ol__", "before<i>ol</i>",
-		"foo**bold**is here", "foo<b>bold</b>is here",
+		"before;__ol__", "before;<i>ol</i>",
+		"foo:**bold**?is here", "foo:<b>bold</b>?is here",
 		`"Hobix":http://hobix.com/`, `<a href="http://hobix.com/">Hobix</a>`,
 		`!http://hobix.com/sample.jpg!`, `<img src="http://hobix.com/sample.jpg" alt="">`,
 		`!openwindow1.gif(Bunny.)!`, `<img src="openwindow1.gif" title="Bunny." alt="Bunny.">`,

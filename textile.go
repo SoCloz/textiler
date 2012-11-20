@@ -1029,7 +1029,7 @@ func (p *TextileParser) parseQtag2(before, rest []byte, qtag byte, tag string) b
 	}
 	rest = rest[1:]
 	rest, attrs := parseAttributesOpt(rest)
-	//fmt.Printf("1'%s'\n", rest)
+	fmt.Printf("1'%s'\n", rest)
 	if rest, inside := parseQtagInside(rest, qtag, true); rest != nil {
 		p.serTag(tag, attrs, before, inside, rest)
 		return true

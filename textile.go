@@ -112,8 +112,7 @@ func NewParser(flags int) *TextileParser {
 	}
 }
 
-var pnct = []byte(".,'\"?!;:()")
-var pnctAndSpace = []byte(".,\"'?!;:() \t")
+var punctAndSpace = []byte(".,\"'?!;:() \t")
 
 func isValidTag(tag []byte) bool {
 	_, ok := blockTags[string(tag)]
@@ -267,19 +266,19 @@ func extractUntil(l []byte, c byte) (rest, inside []byte) {
 	return l[idx+1:], l[:idx]
 }
 
-func endsWithPuncOrSpace(l []byte) bool {
+func endsWithPunctOrSpace(l []byte) bool {
 	n := len(l)
 	if n == 0 {
 		return true
 	}
 	c := l[n-1]
 	// TODO: speed up
-	return bytes.IndexByte(pnctAndSpace, c) != -1
+	return bytes.IndexByte(punctAndSpace, c) != -1
 }
 
 func isPunctOrSpace(c byte) bool {
 	// TODO: speed up
-	return bytes.IndexByte(pnctAndSpace, c) != -1
+	return bytes.IndexByte(punctAndSpace, c) != -1
 }
 
 // $start$inside$end$rest
@@ -352,7 +351,7 @@ func countRepeatedChars(l []byte, c byte) (rest []byte, n int) {
 	return l[0:0], len(l)
 }
 
-func parseStyle(l []byte) (rest, style []byte) {
+func extractShortStyle(l []byte) (rest, style []byte) {
 	var pi PaddingInfo
 	for len(l) > 0 {
 		c := l[0]
@@ -381,97 +380,10 @@ func parseStyle(l []byte) (rest, style []byte) {
 	return l, formatPaddingInfo(pi)
 }
 
-type AttributesOpt struct {
-	class []byte
-	style []byte
-	lang  []byte
-}
-
-// ($classOpt){$styleOpt}[$langOpt]
-func parseAttributesOpt(l []byte) (rest []byte, attrs *AttributesOpt) {
-	if len(l) == 0 {
-		return l, nil
-	}
-	attrs = &AttributesOpt{}
-	if l[0] == '(' {
-		l, attrs.class = extractClassOpt(l)
-	}
-	l, style := parseStyle(l)
-
-	for len(l) > 0 {
-		n := len(l)
-		switch l[0] {
-		case '(':
-			l, attrs.class = extractClassOpt(l)
-		case '[':
-			l, attrs.lang = extractLangOpt(l)
-		case '{':
-			l, attrs.style = extractStyleOpt(l)
-		}
-		if n == len(l) {
-			break
-		}
-	}
-
-	attrs.style = byteConcat(attrs.style, style)
-	return l, attrs
-}
-
-// %($classOpt){$styleOpt}[$langOpt]$inside%$rest
-func parseSpan(l []byte) (rest, inside []byte, attrs *AttributesOpt) {
-	if !startsWithByte(l, '%', 3) {
-		return nil, nil, nil
-	}
-	l = l[1:]
-	l, attrs = parseAttributesOpt(l)
-	rest, inside = extractUntil(l, '%')
-	return rest, inside, attrs
-}
-
-func isChar(c byte) bool {
-	return (c >= 'a' && c <= 'z') ||
-		(c >= 'A' && c <= 'Z')
-}
-
-func isDigit(c byte) bool {
-	return c >= '0' && c <= '9'
-}
-
-// TODO: it's possible this list is not complete
-func isClassChar(c byte) bool {
-	return isChar(c) || isDigit(c) || c == '#' || c == '-'
-}
-
-// ($class)$rest
-func extractClassOpt(l []byte) (rest []byte, classOpt []byte) {
-	if !startsWithByte(l, '(', 3) {
-		return l, nil
-	}
-	if l[1] == ')' {
-		return l, nil
-	}
-	for i := 1; i < len(l); i++ {
-		if !isClassChar(l[i]) {
-			if l[i] == ')' {
-				return l[i+1:], l[1:i]
-			}
-		}
-	}
-	return l, nil
-}
-
 // TODO: it's possible this list is not complete
 func isStyleChar(c byte) bool {
 	return isChar(c) || isDigit(c) ||
 		(-1 != bytes.IndexByte([]byte{'#', '-', ':', ';'}, c))
-}
-
-func endsWithByte(s []byte, b byte) bool {
-	if s == nil || len(s) == 0 {
-		return false
-	}
-	n := len(s) - 1
-	return s[n] == b
 }
 
 // {$style}$rest
@@ -520,41 +432,96 @@ func extractLangOpt(l []byte) (rest, langOpt []byte) {
 	return l, nil
 }
 
-// @$inside@$rest
-func parseCode(l []byte) (rest, inside []byte) {
-	return extractInside(l, '@', '@')
+func isChar(c byte) bool {
+	return (c >= 'a' && c <= 'z') ||
+		(c >= 'A' && c <= 'Z')
 }
 
-func is2Byte(l []byte, b byte) (rest, inside []byte) {
-	if len(l) < 4 {
-		return nil, nil
+func isDigit(c byte) bool {
+	return c >= '0' && c <= '9'
+}
+
+// TODO: it's possible this list is not complete
+func isClassChar(c byte) bool {
+	return isChar(c) || isDigit(c) || c == '#' || c == '-'
+}
+
+// ($class)$rest
+func extractClassOpt(l []byte) (rest []byte, classOpt []byte) {
+	if !startsWithByte(l, '(', 3) {
+		return l, nil
 	}
-	if l[0] != b || l[1] != b {
-		return nil, nil
+	if l[1] == ')' {
+		return l, nil
 	}
-	// TODO: check for punctuation
-	for i := 2; i < len(l)-1; i++ {
-		if l[i] == b {
-			if l[i+1] == b {
-				return l[i+2:], l[2:i]
+	for i := 1; i < len(l); i++ {
+		if !isClassChar(l[i]) {
+			if l[i] == ')' {
+				return l[i+1:], l[1:i]
 			}
 		}
 	}
-	return nil, nil
+	return l, nil
 }
 
-// __$italic__$rest
-func parseItalic(l []byte) (rest, inside []byte) {
-	return is2Byte(l, '_')
+type AttributesOpt struct {
+	class []byte
+	style []byte
+	lang  []byte
 }
 
-// **$bold**$rest
-func parseBold(l []byte) (rest, inside []byte) {
-	return is2Byte(l, '*')
+// ($classOpt){$styleOpt}[$langOpt]
+func parseAttributesOpt(l []byte) (rest []byte, attrs *AttributesOpt) {
+	if len(l) == 0 {
+		return l, nil
+	}
+	attrs = &AttributesOpt{}
+	if l[0] == '(' {
+		l, attrs.class = extractClassOpt(l)
+	}
+	l, style := extractShortStyle(l)
+
+	for len(l) > 0 {
+		n := len(l)
+		switch l[0] {
+		case '(':
+			l, attrs.class = extractClassOpt(l)
+		case '[':
+			l, attrs.lang = extractLangOpt(l)
+		case '{':
+			l, attrs.style = extractStyleOpt(l)
+		}
+		if n == len(l) {
+			break
+		}
+	}
+
+	attrs.style = byteConcat(attrs.style, style)
+	return l, attrs
 }
 
-func parseCite(l []byte) (rest, inside []byte) {
-	return is2Byte(l, '?')
+// %($classOpt){$styleOpt}[$langOpt]$inside%$rest
+func parseSpan(l []byte) (rest, inside []byte, attrs *AttributesOpt) {
+	if !startsWithByte(l, '%', 3) {
+		return nil, nil, nil
+	}
+	l = l[1:]
+	l, attrs = parseAttributesOpt(l)
+	rest, inside = extractUntil(l, '%')
+	return rest, inside, attrs
+}
+
+func endsWithByte(s []byte, b byte) bool {
+	if s == nil || len(s) == 0 {
+		return false
+	}
+	n := len(s) - 1
+	return s[n] == b
+}
+
+// @$inside@$rest
+func parseCode(l []byte) (rest, inside []byte) {
+	return extractInside(l, '@', '@')
 }
 
 // h${n}($classOpt){$styleOpt}[$langOpt]. $rest
@@ -1010,7 +977,7 @@ func parseQtagInside(l []byte, qtag byte, two bool) (rest, inside []byte) {
 }
 
 func (p *TextileParser) parseQtag(before, rest []byte, qtag byte, tag string) bool {
-	if !endsWithPuncOrSpace(before) {
+	if !endsWithPunctOrSpace(before) {
 		return false
 	}
 	rest = rest[1:] // we know the first byte is qtag
@@ -1023,7 +990,7 @@ func (p *TextileParser) parseQtag(before, rest []byte, qtag byte, tag string) bo
 }
 
 func (p *TextileParser) parseQtag2(before, rest []byte, qtag byte, tag string) bool {
-	if !endsWithPuncOrSpace(before) {
+	if !endsWithPunctOrSpace(before) {
 		return false
 	}
 	rest = rest[1:] // we know the first byte is qtag

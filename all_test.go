@@ -142,25 +142,6 @@ func TestParseInline(t *testing.T) {
 	}
 }
 
-func TestItalic(t *testing.T) {
-	italics := []string{
-		"____", "", "",
-		"__f__", "f", "",
-		"__foo__o", "foo", "o",
-		"__a_d___lo", "a_d", "_lo",
-	}
-	for i := 0; i < len(italics)/3; i++ {
-		rest, inside := parseItalic([]byte(italics[i*3]))
-		er1, er2 := []byte(italics[i*3+1]), []byte(italics[i*3+2])
-		if !bytes.Equal(inside, er1) {
-			t.Fatalf("\nExpected[%#v]\nActual  [%#v]", er1, inside)
-		}
-		if !bytes.Equal(rest, er2) {
-			t.Fatalf("\nExpected[%#v]\nActual  [%#v]", er2, rest)
-		}
-	}
-}
-
 func TestTextileHtml(t *testing.T) {
 	lastPassingTest := 12
 	for i := 0; i <= lastPassingTest; i++ {

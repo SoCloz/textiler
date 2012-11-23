@@ -909,7 +909,8 @@ func (p *TextileParser) closeOlIfNecessary() {
 func (p *TextileParser) closeUlIfNecessary() {
 	for p.ulLevel > 0 {
 		p.ulLevel -= 1
-		// TODO: write me
+		// TODO: if it's only one list element, it should be:
+		// </li></ul>, if more than one: </li>\n\t</ul>
 		p.out.WriteString("</li>\n")
 		p.out.WriteString("\t</ul>")
 	}
@@ -1180,8 +1181,14 @@ func (p *TextileParser) parseBlockStart(l []byte) (parsed bool) {
 	return false
 }
 
+func (p *TextileParser) closePrevBlock() {
+	p.closeOlIfNecessary()
+	p.closeUlIfNecessary()
+}
+
 func (p *TextileParser) parseBlock(l []byte) {
 	if len(l) == 0 {
+		p.closePrevBlock()
 		p.closeP()
 		p.blockLineNo = 0
 		return
@@ -1192,8 +1199,7 @@ func (p *TextileParser) parseBlock(l []byte) {
 		return
 	}
 
-	p.closeOlIfNecessary()
-	p.closeUlIfNecessary()
+	p.closePrevBlock()
 	if p.inHtmlCode() {
 		p.startNewLine()
 		p.serAsHtmlCode(l)

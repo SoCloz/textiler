@@ -180,6 +180,24 @@ func TestOl(t *testing.T) {
 	}
 }
 
+func TestHtml(t *testing.T) {
+	tests := []string{
+		"Regardless:\n* a server, which accepts\n\nh3. The server",
+		// TODO: should be:
+		// "\t<p>Regardless:\t<ul>\n\t\t<li>a server, which accepts</li></ul></p>\n\n\t<h3>The server</h3>",
+		"\t<p>Regardless:\t<ul>\n\t\t<li>a server, which accepts</li>\n\t</ul></p>\n\n\t<h3>The server</h3>",
+	}
+	n := len(tests) / 2
+	for i := 0; i < n; i++ {
+		src := tests[i*2]
+		got := textileToHtml(src)
+		exp := tests[i*2+1]
+		if got != exp {
+			t.Fatalf("\nSrc:%#v\n\nExp:%#v\n\nGot:%#v\n", src, exp, got)
+		}
+	}
+}
+
 func TestTextileXhtml(t *testing.T) {
 	// TODO: for now mark tests that we expect to pass explicitly
 	// 4,5,6,7,8,9,10 - smartypants for '"'

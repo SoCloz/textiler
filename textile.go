@@ -16,6 +16,7 @@ const (
 
 const (
 	STYLE_FLOAT_RIGHT = 1
+	STYLE_CENTER      = 2
 )
 
 var newline = []byte{'\n'}
@@ -227,6 +228,10 @@ func parseImg(l []byte) (rest, url, imgSrc, alt []byte, style int) {
 	style = 0
 	if l[0] == '>' {
 		style = STYLE_FLOAT_RIGHT
+		l = l[1:]
+	}
+	if l[0] == '=' {
+		style = STYLE_CENTER
 		l = l[1:]
 	}
 	endIdx := bytes.IndexByte(l, '(')
@@ -808,6 +813,8 @@ func (p *TextileParser) serImg(before []byte, imgSrc []byte, alt []byte, style i
 	styleStr := ""
 	if style == STYLE_FLOAT_RIGHT {
 		styleStr = ` style="float: right;"`
+	} else if style == STYLE_CENTER {
+		styleStr = ` style="display: block; margin: 0 auto;"`
 	}
 	if len(alt) > 0 {
 		p.out.WriteString(fmt.Sprintf(`<img src="%s"%s title="%s" alt="%s"`, string(imgSrc), styleStr, altStr, altStr))

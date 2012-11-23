@@ -123,6 +123,7 @@ func TestParseInline(t *testing.T) {
 		"foo:**bold**?is here", "foo:<b>bold</b>?is here",
 		`"Hobix":http://hobix.com/`, `<a href="http://hobix.com/">Hobix</a>`,
 		`!http://hobix.com/sample.jpg!`, `<img src="http://hobix.com/sample.jpg" alt="">`,
+		`!=http://kjkpub.s3.amazonaws.com/blog/sumatra/sum-shot-03-small.png!`, `<img src="http://kjkpub.s3.amazonaws.com/blog/sumatra/sum-shot-03-small.png" style="display: block; margin: 0 auto;" alt="">`,
 		`!openwindow1.gif(Bunny.)!`, `<img src="openwindow1.gif" title="Bunny." alt="Bunny.">`,
 		`!openwindow1.gif!:http://hobix.com/`, `<a href="http://hobix.com/" class="img"><img src="openwindow1.gif" alt=""></a>`,
 		`@p@`, "<code>p</code>",

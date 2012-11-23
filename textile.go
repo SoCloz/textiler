@@ -14,11 +14,6 @@ const (
 	RENDERER_XHTML = 1 << iota
 )
 
-const (
-	STYLE_FLOAT_RIGHT = 1
-	STYLE_CENTER      = 2
-)
-
 var newline = []byte{'\n'}
 
 type UrlRef struct {
@@ -215,52 +210,38 @@ func parseHtml(l []byte) (rest, html, tag []byte, start bool) {
 	return nil, nil, nil, false
 }
 
-// !$imgSrc($altOptional)!:$urlOptional
+// ![>|<|=]{$styleOpt}($classOpt)$imgSrc($altOptional)!:$urlOptional
 // TODO: should return nil for alt instead of empty slice if not found?
-func parseImg(l []byte) (rest, url, imgSrc, alt []byte, style int) {
+func parseImg(l []byte) (rest, url, imgSrc, alt []byte, attrs *AttributesOpt) {
+	//fmt.Printf("l: '%s'\n", string(l))
 	if len(l) < 3 {
-		return nil, nil, nil, nil, 0
+		return nil, nil, nil, nil, nil
 	}
 	if l[0] != '!' {
-		return nil, nil, nil, nil, 0
+		return nil, nil, nil, nil, nil
 	}
 	l = l[1:]
-	style = 0
-	if l[0] == '>' {
-		style = STYLE_FLOAT_RIGHT
-		l = l[1:]
+	l, attrs = parseAttributesOpt(l, true)
+	endIdx := bytes.IndexByte(l, '!')
+	if endIdx == -1 {
+		return nil, nil, nil, nil, nil
 	}
-	if l[0] == '=' {
-		style = STYLE_CENTER
-		l = l[1:]
-	}
-	endIdx := bytes.IndexByte(l, '(')
+	imgSrc = l[:endIdx]
+	l = l[endIdx+1:]
+	endIdx = bytes.IndexByte(imgSrc, '(')
 	if endIdx != -1 {
-		imgSrc = l[:endIdx]
-		l = l[endIdx+1:]
-		endIdx = bytes.IndexByte(l, ')')
+		alt = imgSrc[endIdx+1:]
+		imgSrc = imgSrc[:endIdx]
+		endIdx = bytes.IndexByte(alt, ')')
 		if endIdx == -1 {
-			return nil, nil, nil, nil, 0
+			return nil, nil, nil, nil, nil
 		}
-		alt = l[:endIdx]
-		l = l[endIdx+1:]
-		if len(l) < 1 || l[0] != '!' {
-			return nil, nil, nil, nil, 0
-		}
-		l = l[1:]
-	} else {
-		endIdx = bytes.IndexByte(l, '!')
-		if endIdx == -1 {
-			return nil, nil, nil, nil, 0
-		}
-		imgSrc = l[:endIdx]
-		l = l[endIdx+1:]
-		alt = l[0:0]
+		alt = alt[:endIdx]
 	}
 	if len(l) > 0 && l[0] == ':' {
 		l, url = extractUrlOrRefName(l[1:])
 	}
-	return l, url, imgSrc, alt, style
+	return l, url, imgSrc, alt, attrs
 }
 
 func extractUntil(l []byte, c byte) (rest, inside []byte) {
@@ -321,7 +302,7 @@ type PaddingInfo struct {
 	paddingRight int
 }
 
-func formatPaddingInfo(pi PaddingInfo) []byte {
+func formatPaddingInfo(pi PaddingInfo, forImg bool) []byte {
 	s := ""
 	if pi.paddingLeft > 0 {
 		s += fmt.Sprintf("padding-left:%dem;", pi.paddingLeft)
@@ -330,16 +311,28 @@ func formatPaddingInfo(pi PaddingInfo) []byte {
 		s += fmt.Sprintf("padding-right:%dem;", pi.paddingRight)
 	}
 	if pi.alignLeft {
-		s += "text-align:left;"
+		if forImg {
+			s += "float: left;"
+		} else {
+			s += "text-align:left;"
+		}
 	}
 	if pi.alignRight {
-		s += "text-align:right;"
+		if forImg {
+			s += "float: right;"
+		} else {
+			s += "text-align:right;"
+		}
 	}
 	if pi.alignJustify {
 		s += "text-align:justify;"
 	}
 	if pi.alignCenter {
-		s += "text-align:center;"
+		if forImg {
+			s += "display: block; margin: 0 auto;"
+		} else {
+			s += "text-align:center;"
+		}
 	}
 	if len(s) == 0 {
 		return nil
@@ -356,7 +349,7 @@ func countRepeatedChars(l []byte, c byte) (rest []byte, n int) {
 	return l[0:0], len(l)
 }
 
-func extractShortStyle(l []byte) (rest, style []byte) {
+func extractShortStyle(l []byte, forImg bool) (rest, style []byte) {
 	var pi PaddingInfo
 	for len(l) > 0 {
 		c := l[0]
@@ -382,7 +375,7 @@ func extractShortStyle(l []byte) (rest, style []byte) {
 			break
 		}
 	}
-	return l, formatPaddingInfo(pi)
+	return l, formatPaddingInfo(pi, forImg)
 }
 
 // TODO: it's possible this list is not complete
@@ -476,7 +469,7 @@ type AttributesOpt struct {
 }
 
 // ($classOpt){$styleOpt}[$langOpt]
-func parseAttributesOpt(l []byte) (rest []byte, attrs *AttributesOpt) {
+func parseAttributesOpt(l []byte, forImg bool) (rest []byte, attrs *AttributesOpt) {
 	if len(l) == 0 {
 		return l, nil
 	}
@@ -484,7 +477,7 @@ func parseAttributesOpt(l []byte) (rest []byte, attrs *AttributesOpt) {
 	if l[0] == '(' {
 		l, attrs.class = extractClassOpt(l)
 	}
-	l, style := extractShortStyle(l)
+	l, style := extractShortStyle(l, forImg)
 
 	for len(l) > 0 {
 		n := len(l)
@@ -511,7 +504,7 @@ func parseSpan(l []byte) (rest, inside []byte, attrs *AttributesOpt) {
 		return nil, nil, nil
 	}
 	l = l[1:]
-	l, attrs = parseAttributesOpt(l)
+	l, attrs = parseAttributesOpt(l, false)
 	rest, inside = extractUntil(l, '%')
 	return rest, inside, attrs
 }
@@ -539,7 +532,7 @@ func parseH(l []byte) (rest []byte, level int, attrs *AttributesOpt) {
 		return l, -1, nil
 	}
 	l = l[2:]
-	l, attrs = parseAttributesOpt(l)
+	l, attrs = parseAttributesOpt(l, false)
 	if len(l) < 2 || l[0] != '.' || l[1] != ' ' {
 		return l, -1, nil
 	}
@@ -666,7 +659,7 @@ func parseP(l []byte) (rest []byte, attrs *AttributesOpt) {
 		return nil, nil
 	}
 	l = l[1:]
-	l, attrs = parseAttributesOpt(l)
+	l, attrs = parseAttributesOpt(l, false)
 	if len(l) < 2 || l[0] != '.' || l[1] != ' ' {
 		return nil, nil
 	}
@@ -804,23 +797,23 @@ func (p *TextileParser) serCode(before, inside, rest []byte) {
 	p.parseInline(rest)
 }
 
-func (p *TextileParser) serImg(before []byte, imgSrc []byte, alt []byte, style int, url []byte, rest []byte) {
+func (p *TextileParser) serImg(before []byte, imgSrc []byte, alt []byte, attrs *AttributesOpt, url []byte, rest []byte) {
 	p.serEscaped(before)
 	if len(url) > 0 {
 		p.out.WriteString(fmt.Sprintf(`<a href="%s" class="img">`, string(url)))
 	}
-	altStr := string(alt)
-	styleStr := ""
-	if style == STYLE_FLOAT_RIGHT {
-		styleStr = ` style="float: right;"`
-	} else if style == STYLE_CENTER {
-		styleStr = ` style="display: block; margin: 0 auto;"`
+	s := ""
+	if len(attrs.style) > 0 {
+		s += fmt.Sprintf(` style="%s"`, string(attrs.style))
+	}
+	if len(attrs.class) > 0 {
+		s += fmt.Sprintf(` class="%s"`, string(attrs.class))
 	}
 	if len(alt) > 0 {
-		p.out.WriteString(fmt.Sprintf(`<img src="%s"%s title="%s" alt="%s"`, string(imgSrc), styleStr, altStr, altStr))
-	} else {
-		p.out.WriteString(fmt.Sprintf(`<img src="%s"%s alt=""`, string(imgSrc), styleStr))
+		s += fmt.Sprintf(` title="%s"`, string(alt))
 	}
+	s += fmt.Sprintf(` alt="%s"`, string(alt))
+	p.out.WriteString(fmt.Sprintf(`<img src="%s"%s`, string(imgSrc), s))
 	if p.isXhtml() {
 		p.out.WriteString(" />")
 	} else {
@@ -988,7 +981,7 @@ func (p *TextileParser) parseQtag(before, rest []byte, qtag byte, tag string) bo
 		return false
 	}
 	rest = rest[1:] // we know the first byte is qtag
-	rest, attrs := parseAttributesOpt(rest)
+	rest, attrs := parseAttributesOpt(rest, false)
 	if rest, inside := parseQtagInside(rest, qtag, false); rest != nil {
 		p.serTag(tag, attrs, before, inside, rest)
 		return true
@@ -1005,7 +998,7 @@ func (p *TextileParser) parseQtag2(before, rest []byte, qtag byte, tag string) b
 		return false
 	}
 	rest = rest[1:]
-	rest, attrs := parseAttributesOpt(rest)
+	rest, attrs := parseAttributesOpt(rest, false)
 	if rest, inside := parseQtagInside(rest, qtag, true); rest != nil {
 		p.serTag(tag, attrs, before, inside, rest)
 		return true
@@ -1062,8 +1055,8 @@ func (p *TextileParser) parseInline(l []byte) {
 			}
 
 		case '!':
-			if rest, url, imgSrc, alt, style := parseImg(l[i:]); rest != nil {
-				p.serImg(l[:i], imgSrc, alt, style, url, rest)
+			if rest, url, imgSrc, alt, attrs := parseImg(l[i:]); rest != nil {
+				p.serImg(l[:i], imgSrc, alt, attrs, url, rest)
 				return
 			}
 

@@ -541,8 +541,7 @@ func parseH(l []byte) (rest []byte, level int, attrs *AttributesOpt) {
 
 // TODO: this is more complex
 func isUrlEnd(b byte) bool {
-	i := bytes.IndexByte([]byte{' ', '!', ')'}, b)
-	return i != -1
+	return -1 != bytes.IndexByte([]byte{' ', '!', ')'}, b)
 }
 
 func detectUrl(l []byte) ([]byte, []byte) {
@@ -564,13 +563,17 @@ func detectUrl(l []byte) ([]byte, []byte) {
 	return l, l[0:0]
 }
 
+func isNotUrlEnd(b byte) bool {
+	return -1 != bytes.IndexByte([]byte{'.', ':'}, b)
+}
+
 func extractUrlOrRefName(l []byte) (rest, urlOrRef []byte) {
 	for i, c := range l {
 		// TODO: hackish. Probably should test l[:i] against a list
 		// of known refs
 		if isUrlEnd(c) {
 			// TODO: hack, if url ends with ".", don't count it as part of url
-			if i > 0 && l[i-1] == '.' {
+			if i > 0 && isNotUrlEnd(l[i-1]) {
 				i -= 1
 			}
 			return l[i:], l[:i]
@@ -578,7 +581,7 @@ func extractUrlOrRefName(l []byte) (rest, urlOrRef []byte) {
 	}
 	// TODO: hack, if url ends with ".", don't count it as part of url
 	i := len(l) - 1
-	if i > 0 && l[i] == '.' {
+	if i > 0 && isNotUrlEnd(l[i]) {
 		return l[i:], l[:i]
 	}
 	return l[0:0], l

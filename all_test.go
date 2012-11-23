@@ -134,6 +134,7 @@ func TestParseInline(t *testing.T) {
 		`@p@`, "<code>p</code>",
 		`before@foo@`, "before<code>foo</code>",
 		`bef@bar@after`, "bef<code>bar</code>after",
+		`project "spells":http://f.org/s.html:`, `project <a href="http://f.org/s.html">spells</a>:`,
 	}
 	for i := 0; i < len(data)/2; i++ {
 		p := NewParser(0)

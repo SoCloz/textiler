@@ -122,6 +122,8 @@ func TestParseInline(t *testing.T) {
 		"before;__ol__", "before;<i>ol</i>",
 		"foo:**bold**?is here", "foo:<b>bold</b>?is here",
 		`"Hobix":http://hobix.com/`, `<a href="http://hobix.com/">Hobix</a>`,
+		`"Hobix":http://hobix.com/.`, `<a href="http://hobix.com/">Hobix</a>.`,
+		`"Hobix":http://hobix.com/,`, `<a href="http://hobix.com/">Hobix</a>,`,
 		`!http://hobix.com/sample.jpg!`, `<img src="http://hobix.com/sample.jpg" alt="">`,
 		`!>http://foo.com/me.jpg!`, `<img src="http://foo.com/me.jpg" style="float: right;" alt="">`,
 		`!<http://foo.com/me.jpg!`, `<img src="http://foo.com/me.jpg" style="float: left;" alt="">`,

@@ -564,7 +564,7 @@ func detectUrl(l []byte) ([]byte, []byte) {
 }
 
 func isNotUrlEnd(b byte) bool {
-	return -1 != bytes.IndexByte([]byte{'.', ':'}, b)
+	return -1 != bytes.IndexByte([]byte{'.', ':', ','}, b)
 }
 
 func extractUrlOrRefName(l []byte) (rest, urlOrRef []byte) {

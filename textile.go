@@ -509,6 +509,19 @@ func parseSpan(l []byte) (rest, inside []byte, attrs *AttributesOpt) {
 	return rest, inside, attrs
 }
 
+
+func (p *TextileParser) parseSpan(before, rest []byte) bool {
+	if !endsWithPunctOrSpace(before) {
+		return false
+	}
+	if rest, inside, attrs := parseSpan(rest); rest != nil {
+		p.serSpan(before, inside, attrs, rest)
+		return true
+	}
+	return false
+}
+
+
 func endsWithByte(s []byte, b byte) bool {
 	if s == nil || len(s) == 0 {
 		return false
@@ -516,6 +529,7 @@ func endsWithByte(s []byte, b byte) bool {
 	n := len(s) - 1
 	return s[n] == b
 }
+
 
 // @$inside@$rest
 func parseCode(l []byte) (rest, inside []byte) {
@@ -1071,8 +1085,7 @@ func (p *TextileParser) parseInline(l []byte) {
 			}
 
 		case '%':
-			if rest, inside, attrs := parseSpan(l[i:]); rest != nil {
-				p.serSpan(l[:i], inside, attrs, rest)
+			if p.parseSpan(l[:i], l[i:]) {
 				return
 			}
 

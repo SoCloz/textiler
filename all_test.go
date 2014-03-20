@@ -112,6 +112,11 @@ func TestParseInline(t *testing.T) {
 	data := []string{
 		".-in me-", ".<del>in me</del>",
 		"_TR()", "_TR()",
+		"f_oo b_ar", "f_oo b_ar",
+		"f*oo b*ar", "f*oo b*ar",
+		"f*oo bar*", "f*oo bar*",
+		"*foo b*ar", "*foo b*ar",
+		"100% and 100%", "100% and 100%",
 		"__f__", "<i>f</i>",
 		"__b__", "<i>b</i>",
 		"__", "__",
